@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# dist/ is committed so the package installs straight from git, where no build
+# ever runs. CI guards that with `dist-is-current`, but only after a push: on a
+# release the first news of a stale dist/ arrives once the tag is already out.
+# The build takes about a tenth of a second, so it is cheaper to ask here.
+#
+# Enable it in a fresh clone with:  git config core.hooksPath .githooks
+
+# Nothing that can move dist/ is in this commit, so say nothing. Doc and test
+# commits are the common case and must not pay for this.
+if git diff --cached --quiet -- src/ scripts/build.js; then
+  exit 0
+fi
+
+# The build reads the working tree while the commit is made from the index. If
+# the two disagree about src/ this check would be judging code that is not
+# being committed, so it declines to judge at all. CI still has the last word.
+if ! git diff --quiet -- src/ scripts/build.js; then
+  echo "pre-commit: src/ has unstaged changes, skipping the dist/ check." >&2
+  exit 0
+fi
+
+# A hook that cannot run its tools must not stand between anybody and a commit:
+# GUI clients routinely start with a different PATH than the shell does.
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: no node on PATH, skipping the dist/ check." >&2
+  exit 0
+fi
+
+node scripts/build.js >/dev/null || {
+  echo "pre-commit: the build failed, so dist/ could not be checked." >&2
+  exit 1
+}
+
+# dist/ now holds what src/ compiles to. Anything left between the working tree
+# and the index is a rebuild the commit is missing.
+if ! git diff --quiet -- dist/; then
+  echo >&2
+  echo "pre-commit: dist/ does not match src/. It is committed, so it has to" >&2
+  echo "travel with the change:" >&2
+  echo >&2
+  echo "    git add dist/" >&2
+  echo >&2
+  echo "Committing anyway: git commit --no-verify" >&2
+  exit 1
+fi

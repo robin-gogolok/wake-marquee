@@ -150,7 +150,19 @@ in a plain clipped flex row, which is exactly the resting state under
 
 - `dist/` is **committed** so the package installs straight from git. The
   `dist-is-current` CI job runs `git diff --exit-code -- dist/`, so any edit
-  to `src/` must be followed by `npm run build` and a commit of `dist/`.
+  to `src/` must be followed by `npm run build` and a commit of `dist/`. The
+  `pre-commit` hook in `.githooks/` asks the same question locally, because CI
+  only answers it after a push and on a release the tag is out by then. A
+  fresh clone opts in once:
+
+  ```sh
+  git config core.hooksPath .githooks
+  ```
+
+  It stays quiet unless `src/` is actually in the commit, and it declines to
+  judge rather than guess: unstaged changes in `src/` mean the build would be
+  reading a different tree than the one being committed, and a missing `node`
+  means it cannot read anything. Both say so and let the commit through.
 - `demo/index.html`, `demo/wake-marquee.css` and `demo/wake-marquee.js` are
   gitignored build output. The demo is also the Playwright fixture: every
   option appears in one of its sections, so a new option is only finished
