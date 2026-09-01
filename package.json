@@ -1,6 +1,6 @@
 {
   "name": "wake-marquee",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "An endless marquee that answers to the scroll: it reverses when the reader scrolls back, and drags against its own direction of travel as it crosses the viewport.",
   "type": "module",
   "license": "MIT",

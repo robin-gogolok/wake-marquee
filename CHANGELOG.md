@@ -8,6 +8,8 @@ While the version is below `1.0.0` the API may still change in a minor release.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-01
+
 Three things adopting `0.1.0` in a real project turned up.
 
 ### Added
@@ -108,5 +110,6 @@ First release.
 - Right-to-left writing modes are not supported. Flex rows follow the writing
   direction while the transforms are physical, so the two disagree.
 
-[Unreleased]: https://github.com/robin-gogolok/wake-marquee/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/robin-gogolok/wake-marquee/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/robin-gogolok/wake-marquee/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/robin-gogolok/wake-marquee/releases/tag/v0.1.0
