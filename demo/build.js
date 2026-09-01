@@ -91,6 +91,26 @@ const sections = [
     </div>`,
   },
   {
+    id: 'counter',
+    label: 'two rows against each other',
+    note: 'The commonest marquee layout, and the one where the wake earns its keep: the two rows are dragged in opposite directions, because the wake always pulls against travel. Scroll and the pair opens and closes like a pair of shears.',
+    html: `<div id="counter-left" data-wake-marquee data-wake-speed="45" data-wake="14" data-wake-gap="3rem" style="--wake-gap:3rem">
+      ${words(['Seit 1906', 'Künzelsau', 'Hohenlohe', 'Vier Generationen'])}
+    </div>
+    <div class="spacer"></div>
+    <div id="counter-right" data-wake-marquee data-wake-direction="right" data-wake-speed="45" data-wake="14" data-wake-gap="3rem" style="--wake-gap:3rem">
+      ${words(['Damenmode', 'Herrenmode', 'Stilberatung', 'Änderungen'])}
+    </div>`,
+  },
+  {
+    id: 'few',
+    label: 'three items',
+    note: 'A lane narrower than the container, repeated until it covers one. This is where a hand-rolled marquee usually breaks: too few copies and a gap crosses the row once per lap, and the number needed changes with the viewport. The count is derived, not configured.',
+    html: `<div id="few-items" data-wake-marquee data-wake-speed="50" data-wake="8" data-wake-gap="5rem" style="--wake-gap:5rem">
+      ${words(['Damenmode', 'Herrenmode', 'Stilberatung'])}
+    </div>`,
+  },
+  {
     id: 'hover',
     label: 'pauseOnHover',
     note: 'Rest the pointer on the row. Only where there is a real pointer to rest: on touch there is no hover to leave again, so the option is ignored rather than trapping the row in a paused state.',

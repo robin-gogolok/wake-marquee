@@ -349,16 +349,67 @@ test.describe('the seam never shows', () => {
         const period = lanes[0].getBoundingClientRect().width;
         return {
           id: root.id,
+          lanes: lanes.length,
           covered: (lanes.length - 1) * period,
           track: root.querySelector('.wake-track').getBoundingClientRect().width,
         };
       }),
     );
 
-    expect(rows.length).toBe(6);
+    // Every row in the document, not a number written down here: a new demo
+    // section should be covered by this the moment it is added.
+    expect(rows.length).toBeGreaterThanOrEqual(8);
     for (const row of rows) {
+      expect(row.lanes, `${row.id} was never measured`).toBeGreaterThan(1);
       expect(row.covered, `${row.id} coverage`).toBeGreaterThanOrEqual(row.track);
     }
+  });
+
+  test('the lanes butt up against each other with no gap anywhere', async ({ page }) => {
+    // The arithmetic test above says there is enough content. This one says it
+    // is in the right places: lanes touching edge to edge, the leftmost one
+    // starting at or before the track and the rightmost ending at or after it.
+    // #few-items is the hard case, with a lane a fraction of the container and
+    // six copies of it to place.
+    await scrollThroughPage(page);
+
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-wake-marquee]')].map((root) => {
+        const lanes = [...root.querySelectorAll('.wake-lane')].map((l) => l.getBoundingClientRect());
+        const track = root.querySelector('.wake-track').getBoundingClientRect();
+        return {
+          id: root.id,
+          count: lanes.length,
+          // What laneCount() is supposed to have worked out, from the geometry
+          // as rendered rather than from the number it was given.
+          needed: Math.ceil(track.width / lanes[0].width) + 2,
+          narrow: lanes[0].width < track.width,
+          // Positive means a hole between two lanes.
+          worstSeam: Math.max(...lanes.slice(1).map((r, i) => r.left - lanes[i].right)),
+          leadsTrack: lanes[0].left - track.left,
+          trailsTrack: lanes[lanes.length - 1].right - track.right,
+        };
+      }),
+    );
+
+    for (const row of rows) {
+      expect(row.worstSeam, `${row.id} seam`).toBeLessThan(1);
+      expect(row.leadsTrack, `${row.id} left edge`).toBeLessThanOrEqual(1);
+      expect(row.trailsTrack, `${row.id} right edge`).toBeGreaterThanOrEqual(-1);
+    }
+
+    // The count is derived, not configured: enough to cover the track, and
+    // not a copy more than the rounding spare calls for.
+    for (const row of rows) {
+      expect(row.count, `${row.id} lane count`).toBeGreaterThanOrEqual(row.needed);
+      expect(row.count, `${row.id} lane count`).toBeLessThanOrEqual(row.needed + 1);
+    }
+
+    // The point of the three-item section: its lane really is narrower than
+    // the track, so the repeat count is doing work rather than staying at 2.
+    const few = rows.find((r) => r.id === 'few-items');
+    expect(few.narrow).toBe(true);
+    expect(few.count).toBeGreaterThan(3);
   });
 
   test('a row nobody has scrolled to has done no work at all', async ({ page }) => {
