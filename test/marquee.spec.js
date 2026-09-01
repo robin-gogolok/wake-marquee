@@ -145,6 +145,14 @@ test.describe('how fast it goes', () => {
 
     await page.setViewportSize({ width: 640, height: 720 });
     await settle(page, '#pace');
+    // The resize moves the scroll on its own: the page reflows taller and the
+    // browser holds the anchored element in place, which lands as about a
+    // hundred pixels backwards and turns both rows around. The scrollIntoView
+    // that follows corrects by a single pixel, far too little to reliably turn
+    // them back, so a quarter of the runs measured the row travelling the
+    // other way and read a correct half speed as a negative one. Ask for a
+    // direction instead of inheriting whatever the reflow left behind.
+    await nudge(page, 40);
 
     const narrow = {
       relative: await travel(page, '#pace-relative'),
