@@ -8,12 +8,22 @@
  * Options are rendered as `data-wake-*` attributes and read back by the
  * script, so the server sends a plain clipped row and the client enhances it.
  * The row is on screen and correctly laid out before any JavaScript arrives.
+ *
+ * The script below starts the row and keeps no handle, because a hoisted Astro
+ * script has nowhere to hand one to. Ask for it by element instead:
+ *
+ *   import { getMarquee } from 'wake-marquee'
+ *   getMarquee(document.querySelector('#logos'))?.pause()
  */
 interface Props {
   /** Travel direction while scrolling down. Scrolling up reverses it. */
   direction?: 'left' | 'right';
-  /** Travel speed in pixels per second. */
-  speed?: number;
+  /**
+   * Travel speed in pixels per second, or a percentage of the container width
+   * per second (`"8%"`). The percentage keeps the pace the same on a phone
+   * and on a desktop; a fixed pixel speed does not.
+   */
+  speed?: number | `${number}%`;
   /** Scroll-driven displacement, in percent of the container width. 0 turns it off. */
   wake?: number;
   /** Whether scrolling up reverses travel. */
@@ -74,7 +84,9 @@ const style = [gap && `--wake-gap:${gap}`, fade && `--wake-fade:${fade}`]
 
 <script>
   // Astro hoists and deduplicates this, so a page with ten marquees still
-  // ships one copy of the library and runs one initialisation pass.
+  // ships one copy of the library and runs one initialisation pass. The
+  // handles it returns are dropped on purpose: there is no way to pass them
+  // back to the page from here, and getMarquee(element) finds them again.
   import { initMarquees } from 'wake-marquee';
   initMarquees();
 </script>

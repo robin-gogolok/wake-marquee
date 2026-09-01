@@ -29,6 +29,30 @@ describe('normalizeOptions', () => {
     assert.equal(options.reverse, false);
   });
 
+  test('accepts a percentage speed, and keeps it as written', () => {
+    // Resolved per frame against the measured container, so it stays a string
+    // here: the option is the intent, not the pixels it works out to today.
+    assert.equal(normalizeOptions({ speed: '8%' }).speed, '8%');
+    assert.equal(normalizeOptions({ speed: ' 12.5% ' }).speed, '12.5%');
+    assert.equal(normalizeOptions({ speed: '0%' }).speed, '0%');
+  });
+
+  test('rejects a duration, which would reverse the option on itself', () => {
+    // "one container width per 9.6 seconds" is a tempting way to write this,
+    // and it makes speed mean two opposite things: '12s' slower than '6s'
+    // while 120 is faster than 60.
+    assert.throws(() => normalizeOptions({ speed: '9.6s' }), RangeError);
+    assert.throws(() => normalizeOptions({ speed: '55px' }), RangeError);
+    assert.throws(() => normalizeOptions({ speed: '-4%' }), RangeError);
+    assert.throws(() => normalizeOptions({ speed: '%' }), RangeError);
+  });
+
+  test('names the value it could not use', () => {
+    // The attribute form is the one that reaches this: whatever the markup
+    // said arrives as a string, and an error about NaN would point nowhere.
+    assert.throws(() => normalizeOptions({ speed: '9.6s' }), /"9\.6s"/);
+  });
+
   test('rejects options that would fail silently at runtime', () => {
     assert.throws(() => normalizeOptions({ direction: 'up' }), RangeError);
     assert.throws(() => normalizeOptions({ speed: -10 }), RangeError);
@@ -51,6 +75,14 @@ describe('readOptions', () => {
   test('reads the numeric attributes', () => {
     const options = readOptions(el({ wakeSpeed: '80', wake: '14', wakeEase: '2.5' }));
     assert.deepEqual(options, { speed: 80, wake: 14, ease: 2.5 });
+  });
+
+  test('keeps a percentage speed a string, and hands the rest on untouched', () => {
+    // Number('8%') is NaN, and normalisation would then complain about a NaN
+    // the markup never wrote. Anything unusable travels as itself instead.
+    assert.equal(readOptions(el({ wakeSpeed: '8%' })).speed, '8%');
+    assert.equal(readOptions(el({ wakeSpeed: '9.6s' })).speed, '9.6s');
+    assert.equal(normalizeOptions(readOptions(el({ wakeSpeed: '8%' }))).speed, '8%');
   });
 
   test('reads the string attributes', () => {

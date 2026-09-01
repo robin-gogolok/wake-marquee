@@ -10,11 +10,20 @@
  * in one of the sections below, so a new option is only wired up once it has
  * something exercising it.
  */
-import { copyFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 
 const here = import.meta.url;
 await copyFile(new URL('../dist/wake-marquee.css', here), new URL('wake-marquee.css', here));
 await copyFile(new URL('../dist/wake-marquee.js', here), new URL('wake-marquee.js', here));
+
+/**
+ * The headline figure, weighed rather than remembered. Written down by hand it
+ * is wrong the first time anything is added and nobody notices, which is the
+ * one number on the page a reader is entitled to trust.
+ */
+const gzipped = gzipSync(await readFile(new URL('wake-marquee.js', here)), { level: 9 }).length;
+const size = `${(gzipped / 1000).toFixed(1)} kB`;
 
 /**
  * A wordmark as a data URI, so the demo needs no network and no binary assets
@@ -111,6 +120,18 @@ const sections = [
     </div>`,
   },
   {
+    id: 'pace',
+    label: 'speed: 8% against speed: 60',
+    note: 'Narrow the window. The top row slows down with it and the bottom one does not. A pixel speed is a physical unit on a page whose elements are not physically constant: the same <code>60</code> that reads as calm across a desktop crosses a phone in a third of the time, with the items scaled down and three times as many of them going past a second. A percentage is a fraction of the container width per second, so the pace survives the trip.',
+    html: `<div id="pace-relative" data-wake-marquee data-wake-speed="8%" data-wake="10" data-wake-gap="3rem" style="--wake-gap:3rem">
+      ${words(['speed: 8%', 'of the container', 'every second', 'narrow the window', 'and I slow down with it'])}
+    </div>
+    <div class="spacer"></div>
+    <div id="pace-fixed" data-wake-marquee data-wake-speed="60" data-wake="10" data-wake-gap="3rem" style="--wake-gap:3rem">
+      ${words(['speed: 60', 'pixels a second', 'whatever the window', 'and on a phone', 'that is a different row'])}
+    </div>`,
+  },
+  {
     id: 'hover',
     label: 'pauseOnHover',
     note: 'Rest the pointer on the row. Only where there is a real pointer to rest: on touch there is no hover to leave again, so the option is ignored rather than trapping the row in a paused state.',
@@ -187,7 +208,7 @@ const html = `<!doctype html>
     line-height: 1.1;
     white-space: nowrap;
   }
-  #wake-none .word, #reverse-off .word { color: var(--muted); }
+  #wake-none .word, #reverse-off .word, #pace-fixed .word { color: var(--muted); }
   #logos-row img { display: block; opacity: 0.9; }
   footer { padding: 14vh 0 8vh; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--rule); }
   a { color: inherit; }
@@ -201,7 +222,7 @@ const html = `<!doctype html>
   <header>
     <h1>wake-marquee</h1>
     <p class="tagline">An endless marquee that answers to the scroll. It reverses when the reader scrolls back, and drags against its own direction of travel as it crosses the viewport.</p>
-    <p class="stat" data-stat>3.0 kB gzipped · 0 dependencies</p>
+    <p class="stat" data-stat>${size} gzipped · 0 dependencies</p>
     <pre><code>npm i wake-marquee</code></pre>
     <p class="note reduced-notice" style="display:none">
       You have <code>prefers-reduced-motion: reduce</code> set, so every row below is standing still. That is the library honouring it, not a bug.

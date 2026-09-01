@@ -8,6 +8,50 @@ While the version is below `1.0.0` the API may still change in a minor release.
 
 ## [Unreleased]
 
+Three things adopting `0.1.0` in a real project turned up.
+
+### Added
+
+- `getMarquee(element)` returns the marquee running on an element, or `null`.
+  `initMarquees()` hands back only the instances that call created, so the
+  declarative integrations were a one-way door: `wake-marquee/astro` starts the
+  rows in a hoisted script with nowhere to return a handle to, and calling
+  `initMarquees()` again from application code returns an empty array because
+  every row is already running. There was no way to reach `pause()`, `refresh()`
+  or `destroy()` at all without giving up the integration and hand-rolling the
+  markup.
+- `speed` accepts a percentage of the container width per second, `'8%'` as
+  well as `60`. Pixels a second is a physical unit on a page whose elements are
+  not physically constant: a logo row is 40px tall with a 72px gap on a desktop
+  and 16px with a 32px gap on a phone, so one value is calm on the first and
+  hectic on the second, with three times as many items going past. The
+  percentage is resolved against the width the wake is already measuring every
+  frame, so it follows a resize and costs nothing.
+- A console warning when the item spacing has collapsed to zero while
+  `--wake-gap` asks for more. An unlayered global reset outranks every cascade
+  layer whatever the specificity says, so `* { margin: 0 }` quietly beats the
+  library's `margin-inline-end` and the items sit flush. Nothing else gives it
+  away: the row still loops and the value still reads correctly in the devtools,
+  which makes it look like a mistake in the consuming project. Said once per
+  page, and never when `--wake-gap` is genuinely `0`.
+
+### Changed
+
+- The README's layer-order guidance was only under "Tailwind CSS v4", which is
+  not where somebody with a hand-written reset goes looking. Styling now has a
+  "Cascade layers" section covering both, and it records why the item spacing
+  stays inside the layer: it is the rule you are most likely to want to
+  override, and unlayered library CSS would beat your own utilities.
+- The demo's size figure is weighed at build time rather than written down.
+
+### Notes
+
+- A duration form of `speed`, `'9.6s'` for one container width, was considered
+  and dropped. It reverses the option on itself next to the number form, where
+  `'12s'` would be slower than `'6s'` while `120` is faster than `60`, and it
+  invites the reading "per lap", which would be the lane width and would mean
+  adding one logo slowed the row down.
+
 ## [0.1.0] - 2026-09-01
 
 First release.

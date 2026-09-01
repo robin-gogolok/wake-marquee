@@ -38,6 +38,32 @@ export function laneCount(trackWidth, period, buffer = 1) {
 }
 
 /**
+ * Resolve the `speed` option to pixels per second.
+ *
+ * A number is already px/s. A percentage is that fraction of the container
+ * width per second, and it exists because px/s is a physical unit on a page
+ * whose elements are not physically constant: a logo row 40px tall with a
+ * 72px gap on a desktop is 16px tall with a 32px gap on a phone, so a fixed
+ * 150 px/s crosses a 1440px container in ten seconds and a 390px one in under
+ * three, with three times as many items passing per second. One value, calm on
+ * the desktop and hectic on the phone. A percentage scales with everything
+ * else on the page and reads as the same pace on both.
+ *
+ * A rate rather than a duration on purpose. `speed` already means "larger is
+ * faster" in its number form, and seconds-per-width would reverse that inside
+ * the same option: `'12s'` slower than `'6s'` while `120` is faster than `60`.
+ *
+ * @param {number | string} speed px per second, or `'8%'` of the container.
+ * @param {number} width Container width in px.
+ * @returns {number} px per second.
+ */
+export function resolveSpeed(speed, width) {
+  if (typeof speed === 'number') return speed;
+  const percent = parseFloat(speed);
+  return Number.isFinite(percent) && width > 0 ? (percent * width) / 100 : 0;
+}
+
+/**
  * Move the loop on by one frame and wrap it back into `[0, period)`.
  *
  * The wrap is a double modulo rather than a plain one, because JavaScript's

@@ -5,7 +5,7 @@ An endless marquee that answers to the scroll. It reverses when the reader scrol
 **[Live demo →](https://robin-gogolok.github.io/wake-marquee/)**
 
 ```
-3.0 kB  gzipped JS
+3.5 kB  gzipped JS
 0.4 kB  gzipped CSS
   0     runtime dependencies
   1     rAF loop, however many rows are on the page
@@ -75,9 +75,18 @@ const row = createMarquee(document.querySelector('#logos'), {
 ---
 import WakeMarquee from 'wake-marquee/astro'
 ---
-<WakeMarquee speed={55} wake={10} fade="6rem" aria-label="Brands we stock">
+<WakeMarquee speed="8%" wake={10} fade="6rem" aria-label="Brands we stock">
   {brands.map((b) => <img src={b.logo} alt={b.name} />)}
 </WakeMarquee>
+```
+
+The component's script starts the row and keeps no handle, because a hoisted
+Astro script has nowhere to hand one to. Ask for it by element instead:
+
+```js
+import { getMarquee } from 'wake-marquee'
+
+getMarquee(document.querySelector('#logos'))?.pause()
 ```
 
 ### React
@@ -133,6 +142,36 @@ The easing is framerate independent, so the same turn takes the same time on a 6
 
 Set `reverse: false` to keep a fixed heading and keep the wake.
 
+## Speed that survives a phone
+
+`speed: 150` is 150 pixels a second, and pixels a second is a physical unit on
+a page whose elements are not physically constant. The same row of logos is
+40px tall with a 72px gap on a desktop and 16px with a 32px gap on a phone, so
+that one number crosses a 1440px container in nine and a half seconds and a
+390px one in under three, with three times as many items going past. Calm on
+the desktop, hectic on the phone, and no breakpoint anywhere in sight because
+the mismatch is in the unit rather than in the value.
+
+So `speed` also takes a percentage, meaning that fraction of the container
+width per second:
+
+```html
+<div data-wake-marquee data-wake-speed="8%">
+```
+
+The width is the one measured every frame for the wake, so this costs nothing
+and follows a resize, a rotation or a container that changes under the row.
+
+A rate rather than a duration on purpose. "One container width per 9.6
+seconds" reads well on its own and reverses the option on itself the moment it
+sits beside the number form: `'12s'` would be slower than `'6s'` while `120` is
+faster than `60`. It also invites the reading "per lap", which would be the
+lane width, so adding one logo would slow the row down.
+
+There is no floor. A percentage on a very narrow viewport is a very slow row,
+and `8%` of 390px is 31 px/s, which may be slower than you want it. Pick the
+percentage for the width you care about most and check the other end.
+
 ## Starting without a flash
 
 A row has two lives: the static one the server sends, and the running one the
@@ -174,7 +213,7 @@ Turns an element and its children into a marquee. Returns a handle.
 | Option | Default | |
 |---|---|---|
 | `direction` | `'left'` | `'left'` or `'right'`, while scrolling down |
-| `speed` | `60` | Travel speed in pixels per second |
+| `speed` | `60` | Pixels per second, or a percentage of the container width per second (`'8%'`) |
 | `wake` | `8` | Scroll displacement, as a percentage of the container width. `0` turns it off |
 | `reverse` | `true` | Whether scrolling up reverses travel |
 | `ease` | `5` | How sharply a reversal settles, per second. Around `1` is a long, heavy turn |
@@ -194,6 +233,24 @@ The handle:
 | `pause()` | Hold the row where it is. The wake stops with it |
 | `refresh()` | Re-measure and top up the clones. Call it after changing the items yourself |
 | `destroy()` | Undo everything: clones, wrappers, observers, listeners, attributes |
+
+### `getMarquee(element)`
+
+The marquee running on an element, or `null`.
+
+```js
+import { getMarquee } from 'wake-marquee'
+
+const row = getMarquee(document.querySelector('#logos'))
+row?.pause()
+```
+
+`initMarquees()` returns only the instances that call created, which is the
+right answer for something safe to call repeatedly and the wrong one for
+anybody who needs a handle later: asking a second time over the same content
+hands back an empty array, because every row is already running. This is the
+way back in, and it is what makes the declarative path as capable as the
+imperative one.
 
 ### `initMarquees({ root?, defaults? })`
 
@@ -216,7 +273,7 @@ Every option except `scroller` and `respectMotionPreference` can be declared in 
 |---|---|
 | `data-wake-marquee` | Marks the container. Also the stylesheet's hook |
 | `data-wake-direction="right"` | `direction` |
-| `data-wake-speed="55"` | `speed` |
+| `data-wake-speed="55"` or `"8%"` | `speed` |
 | `data-wake="10"` | `wake` |
 | `data-wake-ease="2.5"` | `ease` |
 | `data-wake-gap="4rem"` | `gap` |
@@ -255,11 +312,39 @@ The library owns the loop geometry and nothing else. Items look however you styl
 
 The spacing is a `margin-inline-end` on each item rather than `gap` on the row, and that is load-bearing rather than a style choice: **the lane's width is the loop's repeat distance**, so the space after the last item has to be part of the lane. With `gap`, there is no space between the last item of one lane and the first of the next, and the seam is visible on every pass.
 
-All rules live in an `@layer wake-marquee` cascade layer, so your own unlayered CSS wins without `!important`.
+### Cascade layers
+
+All rules live in an `@layer wake-marquee` cascade layer, so your own unlayered CSS wins without `!important`. That is worth knowing in both directions, because the rule behind it is absolute: **an unlayered declaration beats a layered one whatever the specificity says.**
+
+The one rule of the library's that this reaches is the item spacing. An ordinary global reset
+
+```css
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+```
+
+beats `margin-inline-end: var(--wake-gap)` at 0,0,0 against 0,1,0, and the gap collapses to zero. Nothing else gives it away: the row still loops, `--wake-gap` still resolves correctly in the devtools, and the items simply sit flush against one another. It reads as a mistake in your own stylesheet, so the library says so in the console when it sees it.
+
+Put the reset in a layer, and declare the order before the library's import:
+
+```css
+@layer reset, wake-marquee;
+
+@import "wake-marquee/css";
+
+@layer reset {
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+}
+```
+
+The order declaration comes first and the imports come next, because `@import`
+has to precede every rule that is not a layer statement. Where the reset is a
+file of its own, `@import "reset.css" layer(reset);` does the same job.
+
+The spacing stays in the layer rather than being lifted out of it, because it is also the rule you are most likely to want to override: a `me-10` utility or a class of your own on the items should win, and unlayered library CSS would beat both. The library measures whatever spacing ends up applied, so any of that is fine. What it cannot do is guess that you meant a gap and got none.
 
 ### Tailwind CSS v4
 
-Declare the layer order before the imports, or the library will outrank every utility:
+The same rule, the other way round. Declare the layer order before the imports, or the library will outrank every utility:
 
 ```css
 @layer theme, base, components, wake-marquee, utilities;
@@ -313,7 +398,7 @@ The lane is measured once per resize, and its width is the loop period. Content 
 
 | | Size | Scroll-linked | Needs JS |
 |---|---|---|---|
-| **wake-marquee** | 3.4 kB | yes, direction and displacement | yes |
+| **wake-marquee** | 3.9 kB | yes, direction and displacement | yes |
 | CSS `@keyframes` marquee | 0 | no | no |
 | [Marquee3k](https://github.com/ezekielaquino/Marquee3000) | ~2 kB | no | yes |
 | [react-fast-marquee](https://github.com/justin-chu/react-fast-marquee) | ~4 kB | no | yes, React only |

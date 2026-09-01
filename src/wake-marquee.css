@@ -4,6 +4,12 @@
  * Everything lives in one cascade layer, so your own unlayered CSS wins
  * without reaching for !important. Declare the order yourself if you use
  * layers too: @layer theme, wake-marquee, utilities;
+ *
+ * The same rule cuts the other way, and it is the one thing to watch for: an
+ * unlayered global reset beats every layer whatever the specificity says, so
+ * `* { margin: 0 }` collapses the item spacing below to zero and the items sit
+ * flush. Put the reset in a layer of its own and name the order first:
+ * @layer reset, wake-marquee;
  */
 @layer wake-marquee {
   /**

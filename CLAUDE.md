@@ -84,6 +84,12 @@ in a plain clipped flex row, which is exactly the resting state under
   cancel, and worth up to a full amplitude for one loaded mid-passage. Test:
   `a row loaded mid-passage starts where the static row was` — it asserts the
   progress it ran at, because at either extreme it would prove nothing.
+- **A speed is a rate, never a duration.** `speed` takes px/s or a percentage
+  of the container width per second (`'8%'`), resolved in `read()` where the
+  width is honest. Seconds-per-width was the obvious alternative and reverses
+  the option on itself: `'12s'` slower than `'6s'` while `120` is faster than
+  `60`. Tests: `resolveSpeed` in the unit suite, and `a percentage speed is
+  measured against the container, and follows it` for the resize.
 - **Reads never interleave with writes.** `frame()` runs every instance's
   `read()` before any `write()`. `scrollY` and `scrollTop` are layout reads,
   which is why `sampleScroll()` (reads) and `scrollSign()` (map lookup) are
@@ -115,6 +121,17 @@ in a plain clipped flex row, which is exactly the resting state under
   threshold and arrives as a hole in the row.
 - **Cloning happens on first sight, not at construction.** It is why the
   coverage test has to walk the whole page first.
+- **`byElement` is a `WeakMap`, and `getMarquee` is the only reader.**
+  `initMarquees()` returns only what that call created, which leaves the
+  declarative paths with no handle at all: a hoisted Astro script has nowhere
+  to return one to, and calling it again gets an empty array. Weak because the
+  key is the caller's element; a detached row must not be held alive by it.
+- **`#checkSpacing()` parses `--wake-gap` as a string, and stays quiet when it
+  cannot.** There is no way to ask the cascade what a rule *would* have
+  computed to, so it compares the declared token against the computed
+  `margin-inline-end`. A `calc()` parses as `NaN` and the check says nothing:
+  a false warning about somebody else's stylesheet is worse than no warning.
+  Guarded in both directions by the `an unlayered reset` tests.
 
 ### Generated and committed files
 
@@ -132,7 +149,11 @@ in a plain clipped flex row, which is exactly the resting state under
   only type surface consumers get.
 - Zero runtime dependencies is a hard constraint. `esbuild` and
   `@playwright/test` are dev-only.
-- All CSS lives inside `@layer wake-marquee`. Do not add rules outside it.
+- All CSS lives inside `@layer wake-marquee`. Do not add rules outside it,
+  the item spacing included. It is load-bearing and an unlayered reset does
+  beat it, but it is also the rule a consumer is most likely to override on
+  purpose, and unlayered library CSS would beat their utilities. The answer to
+  the reset is the console warning, not leaving the layer.
 - The library owns loop geometry and nothing else. No colours, no sizes, no
   opinions about how items look.
 - Comments explain *why* a non-obvious choice was made. Match that.

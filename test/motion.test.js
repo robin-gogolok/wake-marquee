@@ -1,6 +1,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { advance, clamp, easeDirection, frameDelta, laneCount, viewProgress, wakeOffset } from '../src/motion.js';
+import {
+  advance,
+  clamp,
+  easeDirection,
+  frameDelta,
+  laneCount,
+  resolveSpeed,
+  viewProgress,
+  wakeOffset,
+} from '../src/motion.js';
 
 describe('laneCount', () => {
   test('covers the track with a period to spare on each side', () => {
@@ -145,5 +154,33 @@ describe('clamp', () => {
     assert.equal(clamp(-1, 0, 1), 0);
     assert.equal(clamp(2, 0, 1), 1);
     assert.equal(clamp(0.5, 0, 1), 0.5);
+  });
+});
+
+describe('resolveSpeed', () => {
+  test('passes a pixel speed straight through', () => {
+    assert.equal(resolveSpeed(60, 1440), 60);
+    assert.equal(resolveSpeed(0, 1440), 0);
+  });
+
+  test('reads a percentage as that fraction of the container per second', () => {
+    assert.equal(resolveSpeed('10%', 1440), 144);
+    assert.equal(resolveSpeed('7.5%', 400), 30);
+    assert.equal(resolveSpeed('0%', 1440), 0);
+  });
+
+  test('a percentage crosses the container in the same time at any width', () => {
+    // The whole point of the relative form: 1440 / 144 and 390 / 39 are both
+    // ten seconds, where a fixed 144 px/s would cross the phone in under three.
+    const desktop = 1440 / resolveSpeed('10%', 1440);
+    const phone = 390 / resolveSpeed('10%', 390);
+    assert.equal(desktop, phone);
+  });
+
+  test('an unmeasurable container stands still rather than running at NaN', () => {
+    // A display:none ancestor measures zero. A NaN velocity would put the
+    // offset beyond recovery, and it never comes back once it is there.
+    assert.equal(resolveSpeed('10%', 0), 0);
+    assert.equal(resolveSpeed('nonsense', 1440), 0);
   });
 });

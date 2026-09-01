@@ -121,6 +121,118 @@ test.describe('the loop', () => {
   });
 });
 
+test.describe('how fast it goes', () => {
+  test('a percentage speed is measured against the container, and follows it', async ({ page }) => {
+    // The reason the relative form exists. A pixel speed is a physical unit
+    // on a page whose elements are not physically constant, so one value is
+    // calm on a desktop and hectic on a phone. The fixed row is the control:
+    // same section, same scroll position, only the option differs.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(DEMO);
+    await settle(page, '#pace');
+
+    const wide = {
+      relative: await travel(page, '#pace-relative'),
+      fixed: await travel(page, '#pace-fixed'),
+      width: await page.evaluate(() => document.querySelector('#pace-relative').getBoundingClientRect().width),
+    };
+
+    // data-wake-speed="8%", travelling left, so 8% of the container per
+    // second and negative. Asserted against the width as rendered rather than
+    // against a number written down here, which the next layout change breaks.
+    expect(Math.abs(wide.relative)).toBeGreaterThan(wide.width * 0.055);
+    expect(Math.abs(wide.relative)).toBeLessThan(wide.width * 0.105);
+
+    await page.setViewportSize({ width: 640, height: 720 });
+    await settle(page, '#pace');
+
+    const narrow = {
+      relative: await travel(page, '#pace-relative'),
+      fixed: await travel(page, '#pace-fixed'),
+    };
+
+    // Half the container, half the speed: the resize has to reach the running
+    // loop, not just the next row anybody builds.
+    expect(narrow.relative / wide.relative).toBeGreaterThan(0.35);
+    expect(narrow.relative / wide.relative).toBeLessThan(0.7);
+    expect(narrow.fixed / wide.fixed).toBeGreaterThan(0.8);
+    expect(narrow.fixed / wide.fixed).toBeLessThan(1.25);
+  });
+});
+
+test.describe('an unlayered reset', () => {
+  /**
+   * Put a plain global reset in front of the library's stylesheet, the way a
+   * hand-written one in a consuming project sits. It has to land before the
+   * document is parsed: the demo's module script runs before DOMContentLoaded,
+   * and by then the row has been measured.
+   */
+  const withReset = (page) =>
+    page.addInitScript(() => {
+      const add = () => {
+        const style = document.createElement('style');
+        style.textContent = '*, *::before, *::after { margin: 0; padding: 0 }';
+        document.head.append(style);
+      };
+      if (document.head) add();
+      else
+        new MutationObserver((_, observer) => {
+          if (document.head) {
+            add();
+            observer.disconnect();
+          }
+        }).observe(document, { childList: true, subtree: true });
+    });
+
+  /** @returns {string[]} */
+  const warnings = (page) => {
+    const said = [];
+    page.on('console', (message) => {
+      if (message.type() === 'warning' && message.text().includes('wake-marquee')) said.push(message.text());
+    });
+    return said;
+  };
+
+  test('that collapses the spacing says so, rather than failing quietly', async ({ page }) => {
+    // Specificity says the library wins, 0,1,0 against 0,0,0. Cascade layers
+    // say otherwise: every unlayered declaration beats every layered one. The
+    // row still loops, --wake-gap still reads correctly in the devtools, and
+    // the items sit flush. It reads as a mistake in the consuming project.
+    await withReset(page);
+    const said = warnings(page);
+
+    await page.goto(DEMO);
+    await settle(page, '#logos', 400);
+
+    // The fixture has to reproduce the bug, or the assertion below proves
+    // nothing at all.
+    const spacing = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.querySelector('#logos-row img')).marginInlineEnd),
+    );
+    expect(spacing).toBe(0);
+
+    expect(said.length).toBe(1);
+    expect(said[0]).toContain('@layer');
+  });
+
+  test('once for the page, not once for every row on it', async ({ page }) => {
+    await withReset(page);
+    const said = warnings(page);
+    await page.goto(DEMO);
+    await scrollThroughPage(page);
+    expect(said.length).toBe(1);
+  });
+
+  test('and no warning at all when the spacing survives', async ({ page }) => {
+    // The demo declares --wake-gap on every row and nothing overrides it. A
+    // library that cries wolf here is worse than one that says nothing.
+    const said = warnings(page);
+    await page.goto(DEMO);
+    await scrollThroughPage(page);
+    expect(said).toEqual([]);
+  });
+});
+
 test.describe('starting up', () => {
   /**
    * Sample the row's pattern phase every frame from before the first script
@@ -536,6 +648,42 @@ test.describe('lifecycle', () => {
       [...document.querySelectorAll('[data-wake-marquee]')].map((r) => r.hasAttribute('data-wake-active')),
     );
     expect(active).toContain(false);
+  });
+
+  test('the handle can be found again from the element alone', async ({ page }) => {
+    // What the declarative integrations leave behind. wake-marquee/astro and
+    // wake-marquee/auto start the rows and keep nothing, and initMarquees()
+    // returns only the instances that call created, so asking again over the
+    // same content hands back an empty array rather than the running rows.
+    await page.goto(DEMO);
+    await settle(page, '#logos', 400);
+
+    const found = await page.evaluate(async () => {
+      const { getMarquee, initMarquees } = await import('/demo/wake-marquee.js');
+      const element = document.querySelector('#logos-row');
+      const handle = getMarquee(element);
+      handle.pause();
+
+      return {
+        same: handle === window.marquees.find((m) => m.element.id === 'logos-row'),
+        // The workaround that is not one, kept here so the reason this export
+        // exists stays visible.
+        secondPass: initMarquees().length,
+        paused: getMarquee(element).paused,
+        // An element that is not a marquee, and the null a missing selector
+        // hands over: neither may throw.
+        plain: getMarquee(document.querySelector('h1')),
+        missing: getMarquee(document.querySelector('#not-on-this-page')),
+        gone: (handle.destroy(), getMarquee(element)),
+      };
+    });
+
+    expect(found.same).toBe(true);
+    expect(found.secondPass).toBe(0);
+    expect(found.paused).toBe(true);
+    expect(found.plain).toBe(null);
+    expect(found.missing).toBe(null);
+    expect(found.gone).toBe(null);
   });
 
   test('destroy puts the markup back the way it was found', async ({ page }) => {

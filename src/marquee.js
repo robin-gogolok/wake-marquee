@@ -23,13 +23,24 @@
  * @module wake-marquee
  */
 
-import { advance, clamp, easeDirection, frameDelta, laneCount, viewProgress, wakeOffset } from './motion.js';
+import {
+  advance,
+  clamp,
+  easeDirection,
+  frameDelta,
+  laneCount,
+  resolveSpeed,
+  viewProgress,
+  wakeOffset,
+} from './motion.js';
 
 /**
  * @typedef {object} MarqueeOptions
  * @property {'left' | 'right'} [direction='left'] Travel direction while the
  *   reader scrolls down. Scrolling up reverses it unless `reverse` is off.
- * @property {number} [speed=60] Travel speed in pixels per second.
+ * @property {number | string} [speed=60] Travel speed in pixels per second,
+ *   or a percentage of the container width per second, e.g. `'8%'`. The
+ *   percentage is the one that reads the same on a phone and on a desktop.
  * @property {number} [wake=8] Scroll-driven displacement, as a percentage of
  *   the container width. `0` turns the wake off and leaves a plain loop.
  * @property {boolean} [reverse=true] Whether scrolling up reverses travel.
@@ -73,6 +84,25 @@ const LANE_BUFFER = 1;
 /** How far outside the viewport an instance starts running, in px. */
 const ROOT_MARGIN = '200px 0px';
 
+/** The relative form of `speed`: `'8%'` of the container width, per second. */
+const PERCENT = /^\d*\.?\d+%$/;
+
+/**
+ * Is this a speed the loop can run at: px per second, or a percentage of the
+ * container width per second?
+ *
+ * Deliberately no time form. `'9.6s'` for one container width reads well until
+ * it sits next to the number form, where it reverses the direction of the
+ * option: `'12s'` would be slower than `'6s'` while `120` is faster than `60`.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isSpeed(value) {
+  if (typeof value === 'string') return PERCENT.test(value);
+  return Number.isFinite(value) && /** @type {number} */ (value) >= 0;
+}
+
 /**
  * Has this element already been turned into a marquee?
  *
@@ -91,11 +121,22 @@ function isInitialised(el) {
 /** @type {Set<Marquee>} Every live instance, driven by the one shared loop. */
 const registry = new Set();
 
+/**
+ * @type {WeakMap<Element, Marquee>} The same instances, indexed by element, so
+ * a handle can be found again by whoever ends up needing one. Weak because the
+ * key is the caller's element: a row removed from the document should not be
+ * held alive by this.
+ */
+const byElement = new WeakMap();
+
 /** @type {Map<Window | HTMLElement, {last: number, sign: number}>} */
 const scrollers = new Map();
 
 let rafId = 0;
 let lastFrame = 0;
+
+/** Warned about collapsed spacing once? A global reset breaks every row. */
+let warnedSpacing = false;
 
 /**
  * Read the scroll offset of either the window or an overflow container.
@@ -167,8 +208,13 @@ export function normalizeOptions(options = {}) {
   if (config.direction !== 'left' && config.direction !== 'right') {
     throw new RangeError(`wake-marquee: direction must be "left" or "right", received "${config.direction}"`);
   }
-  if (!Number.isFinite(config.speed) || config.speed < 0) {
-    throw new RangeError(`wake-marquee: speed must be a non-negative number, received ${config.speed}`);
+  if (typeof config.speed === 'string') config.speed = config.speed.trim();
+  if (!isSpeed(config.speed)) {
+    const received = typeof config.speed === 'string' ? `"${config.speed}"` : config.speed;
+    throw new RangeError(
+      'wake-marquee: speed must be a non-negative number of pixels per second, or a percentage ' +
+        `of the container width per second such as "8%", received ${received}`,
+    );
   }
   if (!Number.isFinite(config.wake) || config.wake < 0) {
     throw new RangeError(`wake-marquee: wake must be a non-negative number, received ${config.wake}`);
@@ -197,7 +243,13 @@ export function readOptions(el) {
   const options = {};
 
   if (d.wakeDirection) options.direction = /** @type {'left' | 'right'} */ (d.wakeDirection);
-  if (d.wakeSpeed) options.speed = Number(d.wakeSpeed);
+  // A percentage passes through as the string it is. Anything else that is
+  // not a number passes through too, so normalisation can name it in the
+  // error rather than reporting the NaN that Number() would have made of it.
+  if (d.wakeSpeed) {
+    const speed = d.wakeSpeed.trim();
+    options.speed = Number.isFinite(Number(speed)) ? Number(speed) : speed;
+  }
   if (d.wake) options.wake = Number(d.wake);
   if (d.wakeEase) options.ease = Number(d.wakeEase);
   if (d.wakeGap) options.gap = d.wakeGap;
@@ -231,6 +283,8 @@ class Marquee {
     this.offset = 0;
     /** Width of one lane in px: the loop's repeat distance. */
     this.period = 0;
+    /** Last resolved travel speed in px per second. */
+    this.speedPx = 0;
     /** Last written wake displacement in px, kept so a paused frame holds. */
     this.wakePx = 0;
     /** Last measured wake amplitude in px. */
@@ -250,6 +304,7 @@ class Marquee {
     this.#observe();
 
     registry.add(this);
+    byElement.set(root, this);
     this.#applyMotionPreference();
   }
 
@@ -480,6 +535,7 @@ class Marquee {
       this.offset = (this.offset / this.period) * period;
     }
 
+    if (!this.measured) this.#checkSpacing();
     this.period = period;
     this.measured = true;
     this.#setOverhang();
@@ -515,6 +571,40 @@ class Marquee {
     schedule();
   }
 
+  /**
+   * Say something when a global CSS reset has eaten the spacing between items.
+   *
+   * `margin-inline-end` on the item lives in `@layer wake-marquee`, and every
+   * unlayered declaration beats every layered one whatever the specificity
+   * says, so an ordinary `* { margin: 0 }` reset wins over it. Nothing breaks
+   * loudly: the row still loops, `--wake-gap` still resolves correctly in the
+   * devtools, and the items simply sit flush against one another. A failure
+   * that quiet, in the interaction between two stylesheets, is worth a line in
+   * the console; it otherwise reads as a mistake in the consuming project.
+   *
+   * Runs once per instance, and never again on any of them once it has fired.
+   */
+  #checkSpacing() {
+    if (warnedSpacing) return;
+    const item = this.lane.firstElementChild;
+    if (!item) return;
+
+    const style = getComputedStyle(item);
+    // Unset resolves to the stylesheet's own 2rem, which is not zero either.
+    const declared = style.getPropertyValue('--wake-gap').trim();
+    const asked = declared === '' ? 32 : parseFloat(declared);
+    // A calc() or a var() chain parses as NaN. Unknowable, so say nothing:
+    // a false warning about someone else's CSS is worse than none.
+    if (!(asked > 0) || parseFloat(style.marginInlineEnd) !== 0) return;
+
+    warnedSpacing = true;
+    console.warn(
+      'wake-marquee: the items have no spacing. An unlayered CSS reset outranks ' +
+        '@layer wake-marquee whatever the specificity says. Put the reset in a layer ' +
+        'and name the order first: @layer reset, wake-marquee;',
+    );
+  }
+
   /** Read geometry. Never writes, so it cannot force a layout mid-frame. */
   read(viewport) {
     if (!this.#running()) return;
@@ -524,6 +614,11 @@ class Marquee {
     // overhang the track was given, and that is measured in these same px.
     this.amplitude = (this.options.wake * rect.width) / 100;
     this.wakePx = wakeOffset(progress, this.amplitude, this.dirSign);
+    // Resolved here rather than in write(), because a percentage speed is a
+    // fraction of this same width and this is where the width is honest. It
+    // is re-read every frame, so an option changed at runtime takes effect on
+    // the next one, and a container resized under a running row is followed.
+    this.speedPx = resolveSpeed(this.options.speed, rect.width);
   }
 
   /**
@@ -554,7 +649,7 @@ class Marquee {
     const target = this.hovered ? 0 : this.options.reverse ? this.dirSign * scrollDir : this.dirSign;
     this.dirFactor = easeDirection(this.dirFactor, target, dt, this.options.ease);
 
-    this.offset = advance(this.offset, this.dirFactor * this.options.speed, dt, this.period);
+    this.offset = advance(this.offset, this.dirFactor * this.speedPx, dt, this.period);
 
     // One period of lead, so travelling left never exposes the origin.
     const x = this.offset - this.period;
@@ -598,6 +693,7 @@ class Marquee {
     if (this.destroyed) return;
     this.destroyed = true;
     registry.delete(this);
+    byElement.delete(this.element);
 
     this.intersection?.disconnect();
     this.resize?.disconnect();
@@ -711,6 +807,27 @@ export function initMarquees({ root = document, defaults = {} } = {}) {
   // which is one forced reflow per marquee at the worst possible moment.
   for (const marquee of created) marquee.prime();
   return created;
+}
+
+/**
+ * The marquee running on an element, or `null` if there is none.
+ *
+ * `initMarquees()` returns only the instances that call created, which is the
+ * right answer for something safe to call repeatedly and the wrong one for
+ * anybody who needs a handle later: the second call over the same content
+ * returns an empty array, because every row is already running. Without a way
+ * back in, a declarative integration is a one-way door: `wake-marquee/astro`
+ * starts the rows for you and there is nothing to pause, refresh or destroy.
+ *
+ * @param {Element | null | undefined} element
+ * @returns {Marquee | null}
+ *
+ * @example
+ * const row = getMarquee(document.querySelector('#logos'))
+ * row?.pause()
+ */
+export function getMarquee(element) {
+  return (element && byElement.get(element)) || null;
 }
 
 export { DEFAULTS as defaults, Marquee };
