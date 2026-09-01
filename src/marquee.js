@@ -84,6 +84,13 @@ const LANE_BUFFER = 1;
 /** How far outside the viewport an instance starts running, in px. */
 const ROOT_MARGIN = '200px 0px';
 
+/**
+ * How long a row waits for an image that reserves no space of its own before
+ * it gives up and starts anyway, in ms. Generous on purpose: standing still a
+ * moment longer is invisible, and starting early is the bug this guards.
+ */
+const MEDIA_TIMEOUT = 3000;
+
 /** The relative form of `speed`: `'8%'` of the container width, per second. */
 const PERCENT = /^\d*\.?\d+%$/;
 
@@ -137,6 +144,9 @@ let lastFrame = 0;
 
 /** Warned about collapsed spacing once? A global reset breaks every row. */
 let warnedSpacing = false;
+
+/** Warned about an image with no reserved space once? Same reasoning. */
+let warnedUnsized = false;
 
 /**
  * Read the scroll offset of either the window or an overflow container.
@@ -292,6 +302,13 @@ class Marquee {
     /** Has the first frame been lined up with the static row it replaces? */
     this.aligned = false;
 
+    /**
+     * @type {(() => void) | null} Cancels the wait for an image that has not
+     * reserved its space yet, while there is one. Doubles as the guard that
+     * keeps a second observer callback from starting a second wait.
+     */
+    this.waiting = null;
+
     this.visible = false;
     this.measured = false;
     this.paused = false;
@@ -393,16 +410,111 @@ class Marquee {
   }
 
   /**
-   * Take the row from its static state to its running one inside a single
-   * task: overhang, measurement, clones and the first transform together.
-   * Anything left over for the next frame gets painted on its own.
+   * The images in the lane that will move the loop period when they arrive.
+   *
+   * An `<img>` with no width and height in the markup lays out zero pixels
+   * wide until it has decoded, and the lane's width *is* the period. Measure
+   * now and the row runs on a period that is a fraction of its real one, then
+   * grows into it a logo at a time: eight logos, eight sideways yanks, spread
+   * over however long the slowest of them takes. A row of eight unsized
+   * wordmarks measures 384px at the first frame and 1608px a second and a
+   * half later, and jerks by up to 216px on each step in between.
+   *
+   * Deliberately a measurement rather than a plain `!complete`. An image that
+   * already holds its own box cannot change the period whatever it turns out
+   * to contain, so markup that reserves its space needs no waiting at all and
+   * keeps the single synchronous handover it has today.
+   *
+   * @returns {HTMLImageElement[]}
+   */
+  #unsizedImages() {
+    const pending = [];
+    for (const img of this.lane.querySelectorAll('img')) {
+      if (!img.complete && img.getBoundingClientRect().width === 0) pending.push(img);
+    }
+    return pending;
+  }
+
+  /**
+   * Take the row from its static state to its running one, once the period it
+   * would measure is the period it is going to keep.
+   *
+   * Held back while the lane still contains images that reserve no space. The
+   * wait costs nothing anybody can see: what stands there in the meantime is
+   * the static clipped row, which is what was on screen anyway, and it now
+   * becomes a moving row exactly once instead of stepping into place.
    */
   #activate() {
+    if (this.waiting) return;
+
+    const pending = this.#unsizedImages();
+    if (pending.length === 0) {
+      this.#handover();
+      return;
+    }
+    this.#warnUnsized();
+
+    let left = pending.length;
+    const done = () => {
+      if (--left > 0) return;
+      release();
+      this.#handover();
+    };
+    // Never wait indefinitely: a request that never answers must not leave the
+    // row static for the rest of the session. Past the cap the old behaviour
+    // takes over, and refresh() restates the phase when the image does land.
+    const timer = setTimeout(() => {
+      release();
+      this.#handover();
+    }, MEDIA_TIMEOUT);
+    const release = () => {
+      this.waiting = null;
+      clearTimeout(timer);
+      for (const img of pending) {
+        img.removeEventListener('load', done);
+        img.removeEventListener('error', done);
+      }
+    };
+
+    this.waiting = release;
+    for (const img of pending) {
+      img.addEventListener('load', done);
+      img.addEventListener('error', done);
+    }
+  }
+
+  /**
+   * Overhang, measurement, clones and the first transform, in one task.
+   * Anything left over for the next frame gets painted on its own.
+   */
+  #handover() {
+    if (this.destroyed) return;
     this.refresh();
     if (this.period > 0 && !this.paused) {
       this.read(window.innerHeight);
       this.write(0, scrollSign(this.options.scroller));
     }
+  }
+
+  /**
+   * Say something when an item holds no space until it loads.
+   *
+   * The row recovers on its own now, but it recovers by standing still until
+   * the last image lands, which on a slow connection is the row not starting
+   * for a second or two. The fix belongs in the markup, costs one attribute
+   * pair, and is worth knowing about: `width` and `height` on the `<img>` also
+   * spare the reader the layout shift the rest of the page pays for.
+   *
+   * Once per page, like the spacing warning.
+   */
+  #warnUnsized() {
+    if (warnedUnsized) return;
+    warnedUnsized = true;
+    console.warn(
+      'wake-marquee: an item holds no width until it loads, so the loop period is not ' +
+        'measurable yet and the row is waiting. Give each <img> its width and height ' +
+        'attributes, or an aspect-ratio, and it starts immediately.',
+    );
   }
 
   #observe() {
@@ -560,6 +672,11 @@ class Marquee {
       // hole in the row. The source is identical to the original, so this is
       // a cache hit rather than a second download.
       clone.querySelectorAll('img[loading="lazy"]').forEach((img) => img.setAttribute('loading', 'eager'));
+      // A ResizeObserver is notified after the same frame's rAF callbacks, so
+      // a lane added from one would be painted once before the loop could
+      // transform it, sitting up to a whole period right of its siblings for
+      // that frame. Matching it to them before it is attached costs nothing.
+      clone.style.transform = this.lane.style.transform;
       this.track.appendChild(clone);
       this.lanes.push(clone);
     }
@@ -695,6 +812,7 @@ class Marquee {
     registry.delete(this);
     byElement.delete(this.element);
 
+    this.waiting?.();
     this.intersection?.disconnect();
     this.resize?.disconnect();
     if (this.onEnter) this.element.removeEventListener('pointerenter', this.onEnter);

@@ -77,6 +77,15 @@ in a plain clipped flex row, which is exactly the resting state under
   the overhang and writes the first transform together. Anything left for the
   next frame gets painted on its own and the row visibly assembles itself.
   Guarded by `a row below the fold does not jump when it comes into view`.
+- **The handover waits for content that reserves no space.** An unloaded
+  `<img>` with no `width`/`height` is zero pixels wide, so the lane measures
+  its gaps and nothing else and every image that lands afterwards restates the
+  period under a running row. `#activate()` holds off while
+  `#unsizedImages()` finds any, capped by `MEDIA_TIMEOUT`. It is a measurement
+  and not a plain `!complete` on purpose: an image already holding its box
+  cannot move the period, so correct markup keeps the single synchronous
+  handover. Test: `do not lurch the row sideways as they land`, which fails at
+  ~118px without it.
 - **The first frame is aligned to the static row it replaces**, not to the
   loop's zero point. `#align()` solves
   `-amplitude + wake + (offset - period) ≡ 0 (mod period)`. This is invisible
@@ -116,6 +125,10 @@ in a plain clipped flex row, which is exactly the resting state under
   periods, so a lane resized by a late font or an unsized image would
   otherwise shift the row by the difference. The restatement is an
   approximation: the wake is in absolute px and does not scale.
+- **A new lane is given the current transform before it is attached.**
+  `ResizeObserver` is notified after the frame's rAF callbacks, so a lane
+  cloned from one is painted once before the loop can reach it, sitting up to
+  a period right of its siblings.
 - **Clones get `loading="eager"`.** A clone starts off to the right of the
   track and is translated in, so a lazy image there never reaches its loading
   threshold and arrives as a hole in the row.

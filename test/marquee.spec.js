@@ -444,6 +444,131 @@ test.describe('starting up', () => {
   });
 });
 
+test.describe('items that arrive late', () => {
+  /**
+   * Rewrite the logo row into the shape that actually breaks, and answer it
+   * slowly: `<img>` with no width and no height, one wordmark at a time.
+   *
+   * That is the ordinary markup for a logo strip, and it is the one case
+   * where the loop period is unknowable at the moment the row would start.
+   * An unloaded image with no dimensions lays out zero pixels wide, so the
+   * lane measures its gaps and nothing else, and every logo that lands
+   * afterwards restates the period under a row that is already moving.
+   *
+   * The rewrite has to happen before the demo's module script runs, which is
+   * after the document is parsed, so it watches for the row rather than
+   * waiting for an event.
+   */
+  const withSlowUnsizedLogos = async (page) => {
+    await page.route('**/slow-logo-*.svg', async (route) => {
+      const index = Number(/slow-logo-(\d+)/.exec(route.request().url())[1]);
+      const width = 90 + index * 20;
+      await new Promise((resolve) => setTimeout(resolve, 120 + index * 80));
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        body:
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="48">` +
+          `<rect width="${width}" height="48" fill="#999"/></svg>`,
+      });
+    });
+
+    await page.addInitScript(() => {
+      const strip = (row) => {
+        row.querySelectorAll('img').forEach((img, i) => {
+          img.removeAttribute('width');
+          img.removeAttribute('height');
+          img.src = `/slow-logo-${i}.svg`;
+        });
+      };
+      const now = document.querySelector('#logos-row');
+      if (now) strip(now);
+      else
+        new MutationObserver((_, observer) => {
+          const row = document.querySelector('#logos-row');
+          if (row) {
+            strip(row);
+            observer.disconnect();
+          }
+        }).observe(document, { childList: true, subtree: true });
+    });
+  };
+
+  /** Sample the row's phase every frame, and whether it is running yet. */
+  const watch = (page) =>
+    page.addInitScript(() => {
+      window.__samples = [];
+      const tick = () => {
+        const root = document.querySelector('#logos-row');
+        const lane = root?.querySelector('.wake-lane');
+        const item = root?.querySelector('img');
+        if (lane && item) {
+          window.__samples.push({
+            left: item.getBoundingClientRect().left,
+            period: lane.getBoundingClientRect().width,
+            // Before the handover the row is a static clipped flex row and is
+            // allowed to reflow as its content lands. Only what happens after
+            // it starts moving is the library's to answer for.
+            running: lane.style.transform !== '',
+          });
+        }
+        if (window.__samples.length < 400) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+  test('do not lurch the row sideways as they land', async ({ page }) => {
+    await withSlowUnsizedLogos(page);
+    await watch(page);
+
+    await page.goto(DEMO);
+    await settle(page, '#logos', 2500);
+
+    const result = await page.evaluate(() => {
+      const samples = window.__samples.filter((s) => s.period > 0);
+      const jumps = [];
+      for (let i = 1; i < samples.length; i++) {
+        if (!samples[i].running || !samples[i - 1].running) continue;
+        const period = samples[i].period;
+        const phase = (left) => ((left % period) + period) % period;
+        const raw = phase(samples[i].left) - phase(samples[i - 1].left);
+        jumps.push(Math.abs(((((raw + period / 2) % period) + period) % period) - period / 2));
+      }
+      const running = samples.filter((s) => s.running);
+      return {
+        jumps,
+        // The fixture has to reproduce the conditions, or this proves nothing:
+        // the row must have started on a period several times what it would
+        // have measured with every image still in flight.
+        started: running.length,
+        period: running.at(-1)?.period ?? 0,
+        widest: Math.max(...samples.map((s) => s.period)),
+      };
+    });
+
+    expect(result.started).toBeGreaterThan(30);
+    expect(result.period).toBe(result.widest);
+    // At 55 px/s a frame moves under a pixel. Starting on the provisional
+    // period instead lands this between 100 and 220: the row visibly yanking
+    // sideways once for every logo that arrives.
+    expect(Math.max(...result.jumps)).toBeLessThan(8);
+  });
+
+  test('say so once, because the markup is where this is fixed', async ({ page }) => {
+    const said = [];
+    page.on('console', (message) => {
+      if (message.type() === 'warning' && message.text().includes('wake-marquee')) said.push(message.text());
+    });
+
+    await withSlowUnsizedLogos(page);
+    await page.goto(DEMO);
+    await scrollThroughPage(page);
+
+    expect(said.length).toBe(1);
+    expect(said[0]).toContain('width and height');
+  });
+});
+
 test.describe('the seam never shows', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(DEMO);

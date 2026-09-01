@@ -45,9 +45,9 @@ Write the container and its items. The direct children become the items; the lib
 
 ```html
 <div data-wake-marquee data-wake-speed="55" data-wake="10" data-wake-fade="6rem">
-  <img src="/logos/a.svg" alt="Nordlicht">
-  <img src="/logos/b.svg" alt="Kvist">
-  <img src="/logos/c.svg" alt="Halden & Co">
+  <img src="/logos/a.svg" alt="Nordlicht" width="150" height="48">
+  <img src="/logos/b.svg" alt="Kvist" width="110" height="48">
+  <img src="/logos/c.svg" alt="Halden & Co" width="175" height="48">
 </div>
 ```
 
@@ -76,7 +76,7 @@ const row = createMarquee(document.querySelector('#logos'), {
 import WakeMarquee from 'wake-marquee/astro'
 ---
 <WakeMarquee speed="8%" wake={10} fade="6rem" aria-label="Brands we stock">
-  {brands.map((b) => <img src={b.logo} alt={b.name} />)}
+  {brands.map((b) => <img src={b.logo} alt={b.name} width={b.width} height={48} />)}
 </WakeMarquee>
 ```
 
@@ -199,10 +199,16 @@ Same for `data-wake-fade` and `--wake-fade`. The library leaves a property
 that is already set alone, so there is no conflict. `wake-marquee/astro` does
 this for you.
 
-**Give images `width` and `height`.** An unsized image changes the lane width
-when it decodes, and the lane width is the loop period. The library restates
-the offset in the new period so the row does not leap, but the items around it
-still move: only the attributes prevent that.
+**Give images `width` and `height`.** An unsized image is zero pixels wide
+until it decodes, and the lane width is the loop period. A row of eight
+unsized logos measures its gaps and nothing else at the first frame, then
+grows into its real width one logo at a time.
+
+The library will not start on a measurement like that: a row whose items
+reserve no space waits for them, keeps standing as the static row the reader
+was already looking at, and starts once. That is the safe behaviour, not the
+good one, and it says so in the console. With the attributes there is nothing
+to wait for and the row starts immediately.
 
 ## API
 

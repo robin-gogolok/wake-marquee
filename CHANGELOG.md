@@ -8,6 +8,25 @@ While the version is below `1.0.0` the API may still change in a minor release.
 
 ## [Unreleased]
 
+### Fixed
+
+- A row of images with no `width` and `height` no longer jerks sideways once
+  for every image that arrives. An unloaded, unsized `<img>` lays out zero
+  pixels wide, and the lane's width is the loop period, so the row was
+  starting on a period made of its gaps and nothing else: eight logos over a
+  phone connection measured 384px at the first frame and 1608px a second and a
+  half later, and yanked by up to 216px on each step in between. A row whose
+  items reserve no space now waits for them and hands over once, which is
+  invisible because what stands there meanwhile is the static row that was on
+  screen anyway. The wait is capped, so a request that never answers costs a
+  late start rather than a row that never runs. It is the safe behaviour and
+  not the good one, so it also warns, once per page: the fix is two attributes
+  in the markup, and they spare the rest of the page the same layout shift.
+- A lane added by a resize is given the loop's current transform before it is
+  attached. `ResizeObserver` is notified after the same frame's
+  `requestAnimationFrame` callbacks, so a lane cloned from one was painted once
+  at its untransformed position, up to a whole period right of its siblings.
+
 ## [0.2.0] - 2026-09-01
 
 Three things adopting `0.1.0` in a real project turned up.
