@@ -1,0 +1,66 @@
+{
+  "name": "wake-marquee",
+  "version": "0.1.0",
+  "description": "An endless marquee that answers to the scroll: it reverses when the reader scrolls back, and drags against its own direction of travel as it crosses the viewport.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Robin Gogolok (https://robin-gogolok.de)",
+  "homepage": "https://robin-gogolok.github.io/wake-marquee/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robin-gogolok/wake-marquee.git"
+  },
+  "bugs": {
+    "url": "https://github.com/robin-gogolok/wake-marquee/issues"
+  },
+  "keywords": [
+    "marquee",
+    "ticker",
+    "logo-ticker",
+    "infinite-scroll",
+    "scroll-animation",
+    "parallax",
+    "scroll-linked",
+    "astro",
+    "vanilla-js",
+    "zero-dependency"
+  ],
+  "exports": {
+    ".": "./src/marquee.js",
+    "./css": "./dist/wake-marquee.css",
+    "./css/source": "./src/wake-marquee.css",
+    "./auto": "./src/auto.js",
+    "./motion": "./src/motion.js",
+    "./astro": "./integrations/astro/WakeMarquee.astro",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/marquee.js",
+  "files": [
+    "src",
+    "dist",
+    "integrations",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./src/auto.js",
+    "**/*.css"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build.js && node demo/build.js",
+    "test": "npm run test:unit && npm run test:browser",
+    "test:unit": "node --test test/*.test.js",
+    "pretest:browser": "npm run build",
+    "test:browser": "playwright test",
+    "serve": "node scripts/serve.js",
+    "prepublishOnly": "npm run build && npm run test:unit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "esbuild": "^0.25.0"
+  }
+}

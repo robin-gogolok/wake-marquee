@@ -1,0 +1,9 @@
+node_modules/
+demo/index.html
+demo/wake-marquee.css
+demo/wake-marquee.js
+test-results/
+playwright-report/
+.DS_Store
+*.log
+*.tgz

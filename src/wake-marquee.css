@@ -1,0 +1,115 @@
+/*! wake-marquee | MIT | https://github.com/robin-gogolok/wake-marquee */
+
+/**
+ * Everything lives in one cascade layer, so your own unlayered CSS wins
+ * without reaching for !important. Declare the order yourself if you use
+ * layers too: @layer theme, wake-marquee, utilities;
+ */
+@layer wake-marquee {
+  /**
+   * The container clips, and its box is the geometry the wake is measured
+   * against. It is a flex row before the script ever runs, which is what
+   * makes the unenhanced page look deliberate: one static row of items,
+   * cut off at the edge, rather than a stack.
+   */
+  [data-wake-marquee] {
+    display: flex;
+    position: relative;
+    overflow: hidden;
+    /* A flex or grid child refuses to shrink below its content without this,
+       and a marquee is all content. Left out, the row pushes the page wider
+       instead of clipping. */
+    min-width: 0;
+  }
+
+  /**
+   * `clip` rather than `hidden` where it is available. `hidden` makes the
+   * element a scroll container, so a stray focus inside it can scroll the row
+   * sideways and strand it mid-loop; `clip` cannot be scrolled at all. It also
+   * lets shadows and hover lifts overflow vertically, which `hidden` would cut.
+   */
+  @supports (overflow: clip) {
+    [data-wake-marquee] {
+      overflow-x: clip;
+      overflow-y: visible;
+    }
+  }
+
+  /**
+   * Items, before the script runs and after. The spacing sits inside the item
+   * as a margin rather than as `gap` on the row, and that is load-bearing: the
+   * lane's width is the loop's repeat distance, so the space after the last
+   * item has to be part of the lane. With `gap` there is no space between the
+   * last item and the first item of the next lane, and the seam is visible on
+   * every pass.
+   *
+   * A margin, not padding, because an item with a background or a border would
+   * otherwise render the spacing as part of itself.
+   */
+  [data-wake-marquee] > :not(.wake-track),
+  .wake-lane > * {
+    flex: none;
+    margin-inline-end: var(--wake-gap, 2rem);
+  }
+
+  /**
+   * The layer the scroll displaces. Its overhang and width are set by the
+   * script from the `wake` option: it is wider than the container by exactly
+   * the distance the wake can move it, so the row never runs out of content
+   * at either edge no matter where the scroll is.
+   */
+  .wake-track {
+    display: flex;
+    flex: none;
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
+  /**
+   * One repeat of the content. Neither shrinking nor wrapping is allowed:
+   * both would change the width, and the width *is* the loop period.
+   */
+  .wake-lane {
+    display: flex;
+    flex: none;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  /**
+   * Promoted only while the row is actually on screen. `will-change` held
+   * permanently is a standing request for a compositor layer, and a page with
+   * eight marquees pays for eight of them whether or not any are in view.
+   */
+  [data-wake-active] > .wake-track {
+    will-change: transform;
+  }
+
+  [data-wake-fade] {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--wake-fade, 0px),
+      #000 calc(100% - var(--wake-fade, 0px)),
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--wake-fade, 0px),
+      #000 calc(100% - var(--wake-fade, 0px)),
+      transparent
+    );
+  }
+
+  /**
+   * The script stops itself under a reduced-motion preference and resets the
+   * transforms, so the row simply stands still. This only drops the layer
+   * promotion that would then be paid for and never used.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    [data-wake-active] > .wake-track {
+      will-change: auto;
+    }
+  }
+}

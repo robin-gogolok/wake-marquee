@@ -1,0 +1,68 @@
+---
+/**
+ * Astro wrapper around wake-marquee.
+ *
+ * Import the stylesheet once in your layout:
+ *   import 'wake-marquee/css'
+ *
+ * Options are rendered as `data-wake-*` attributes and read back by the
+ * script, so the server sends a plain clipped row and the client enhances it.
+ * The row is on screen and correctly laid out before any JavaScript arrives.
+ */
+interface Props {
+  /** Travel direction while scrolling down. Scrolling up reverses it. */
+  direction?: 'left' | 'right';
+  /** Travel speed in pixels per second. */
+  speed?: number;
+  /** Scroll-driven displacement, in percent of the container width. 0 turns it off. */
+  wake?: number;
+  /** Whether scrolling up reverses travel. */
+  reverse?: boolean;
+  /** How sharply a reversal settles, per second. */
+  ease?: number;
+  /** Space between two items, any CSS length. */
+  gap?: string;
+  /** Soft edges left and right, any CSS length. */
+  fade?: string;
+  /** Hold still while a real pointer rests on the row. */
+  pauseOnHover?: boolean;
+  class?: string;
+  'aria-label'?: string;
+}
+
+const {
+  direction,
+  speed,
+  wake,
+  reverse,
+  ease,
+  gap,
+  fade,
+  pauseOnHover = false,
+  class: className,
+  'aria-label': ariaLabel,
+} = Astro.props;
+---
+
+<div
+  class={className}
+  data-wake-marquee
+  data-wake-direction={direction}
+  data-wake-speed={speed?.toString()}
+  data-wake={wake?.toString()}
+  data-wake-ease={ease?.toString()}
+  data-wake-gap={gap}
+  data-wake-fade={fade}
+  data-wake-reverse={reverse === undefined ? undefined : String(reverse)}
+  data-wake-pause-on-hover={pauseOnHover ? '' : undefined}
+  aria-label={ariaLabel}
+>
+  <slot />
+</div>
+
+<script>
+  // Astro hoists and deduplicates this, so a page with ten marquees still
+  // ships one copy of the library and runs one initialisation pass.
+  import { initMarquees } from 'wake-marquee';
+  initMarquees();
+</script>
