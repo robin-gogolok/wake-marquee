@@ -233,6 +233,10 @@ class Marquee {
     this.period = 0;
     /** Last written wake displacement in px, kept so a paused frame holds. */
     this.wakePx = 0;
+    /** Last measured wake amplitude in px. */
+    this.amplitude = 0;
+    /** Has the first frame been lined up with the static row it replaces? */
+    this.aligned = false;
 
     this.visible = false;
     this.measured = false;
@@ -314,10 +318,36 @@ class Marquee {
       setAttribute('data-wake-fade', '');
     }
 
-    // The overhang the wake spends. Set even at wake: 0, where it is a no-op,
-    // so there is one code path instead of two.
+  }
+
+  /**
+   * Give the track the overhang the wake spends, half of it on each side.
+   *
+   * Deliberately not done at construction. The overhang shifts the row left
+   * by a full amplitude on its own, and the transform that cancels it is only
+   * written once the row is measured. Set them at different times and the
+   * reader sees the row slide sideways and back: at construction for a row on
+   * screen, and on the way in for a row below the fold, which is worse
+   * because it happens right where they are looking.
+   *
+   * Idempotent, so refresh() can call it on every resize.
+   */
+  #setOverhang() {
     this.track.style.marginInlineStart = `-${this.options.wake}%`;
     this.track.style.width = `${100 + this.options.wake * 2}%`;
+  }
+
+  /**
+   * Take the row from its static state to its running one inside a single
+   * task: overhang, measurement, clones and the first transform together.
+   * Anything left over for the next frame gets painted on its own.
+   */
+  #activate() {
+    this.refresh();
+    if (this.period > 0 && !this.paused) {
+      this.read(window.innerHeight);
+      this.write(0, scrollSign(this.options.scroller));
+    }
   }
 
   #observe() {
@@ -326,12 +356,15 @@ class Marquee {
     this.intersection = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
+          this.visible = entry.isIntersecting;
+          root.toggleAttribute('data-wake-active', entry.isIntersecting);
           // Clone on first sight, not at construction. Images below the fold
           // keep their `loading="lazy"` meaning that way, and a page with a
           // dozen marquees does no work for the eleven nobody has reached.
-          if (entry.isIntersecting && !this.measured) this.refresh();
-          this.visible = entry.isIntersecting;
-          root.toggleAttribute('data-wake-active', entry.isIntersecting);
+          // Activating here rather than leaving it to the next frame matters
+          // when the reader arrives by anchor link or a restored scroll
+          // position: the row is already fully in view when this fires.
+          if (entry.isIntersecting && !this.measured) this.#activate();
         }
         schedule();
       },
@@ -389,8 +422,40 @@ class Marquee {
   #reset() {
     this.offset = 0;
     this.wakePx = 0;
+    // Resuming is a first frame again: it has to line up with the static row
+    // that a reduced-motion reader has been looking at until now.
+    this.aligned = false;
     for (const lane of this.lanes) lane.style.transform = '';
     this.track.style.transform = '';
+  }
+
+  /**
+   * Build the running state now, in the caller's own task, for a row that is
+   * already on screen.
+   *
+   * Left to the observers, the three steps land in three different frames:
+   * the overhang in one, the clones in the next, the first transform in the
+   * one after. The browser paints all three, and the row visibly jumps twice
+   * before it settles. Doing them together means the reader goes straight
+   * from the static row to the moving one with nothing in between.
+   *
+   * Rows below the fold are left to the IntersectionObserver, which is what
+   * keeps a page of ten marquees from measuring ten of them at load.
+   */
+  prime() {
+    if (this.destroyed || this.measured) return this;
+
+    const viewport = window.innerHeight;
+    const rect = this.element.getBoundingClientRect();
+    const margin = 200; // matches ROOT_MARGIN
+    if (rect.bottom < -margin || rect.top > viewport + margin) return this;
+
+    this.visible = true;
+    this.element.toggleAttribute('data-wake-active', true);
+    // dt of zero advances nothing: this only puts the row on screen already
+    // running, aligned to the static row it replaces.
+    this.#activate();
+    return this;
   }
 
   /**
@@ -406,8 +471,18 @@ class Marquee {
     // callback tries again, rather than locking in a broken period.
     if (!(period > 0)) return;
 
+    // The period is the unit the offset is expressed in, so when it changes
+    // the offset has to be restated in the new one or the row jumps by the
+    // difference. This is not a rare edge: an image without width and height
+    // attributes, or a web font swapping in, resizes the lane under a row
+    // that is already running. Holding the phase keeps that invisible.
+    if (this.period > 0 && period !== this.period) {
+      this.offset = (this.offset / this.period) * period;
+    }
+
     this.period = period;
     this.measured = true;
+    this.#setOverhang();
 
     const needed = laneCount(this.track.getBoundingClientRect().width, period, LANE_BUFFER);
 
@@ -445,13 +520,36 @@ class Marquee {
     if (!this.#running()) return;
     const rect = this.element.getBoundingClientRect();
     const progress = viewProgress(rect.top, rect.height, viewport);
-    const amplitude = (this.options.wake * rect.width) / 100;
-    this.wakePx = wakeOffset(progress, amplitude, this.dirSign);
+    // Kept because the first frame's alignment has to undo exactly the
+    // overhang the track was given, and that is measured in these same px.
+    this.amplitude = (this.options.wake * rect.width) / 100;
+    this.wakePx = wakeOffset(progress, this.amplitude, this.dirSign);
+  }
+
+  /**
+   * Land the first animated frame on the pixel the static row already
+   * occupies, instead of wherever `offset: 0` happens to fall.
+   *
+   * Before the script runs, item 1 sits flush at the container's left edge.
+   * A running row puts lane 0 at `-period` so a clone covers that edge, and
+   * shifts the whole track by `-amplitude` of overhang plus the wake. Left
+   * alone, those add up to a visible jump on the first frame, of anything up
+   * to one full amplitude depending on where the row happens to be on screen.
+   *
+   * Solving `-amplitude + wake + (offset - period) ≡ 0 (mod period)` for the
+   * offset lines the two up exactly, whatever the scroll position. From the
+   * next frame on it advances normally: nothing else ever touches it.
+   */
+  #align() {
+    this.aligned = true;
+    const shift = this.amplitude - this.wakePx;
+    this.offset = ((shift % this.period) + this.period) % this.period;
   }
 
   /** Write transforms. Never reads geometry. */
   write(dt, scrollDir) {
     if (!this.#running()) return;
+    if (!this.aligned) this.#align();
 
     const target = this.hovered ? 0 : this.options.reverse ? this.dirSign * scrollDir : this.dirSign;
     this.dirFactor = easeDirection(this.dirFactor, target, dt, this.options.ease);
@@ -586,7 +684,7 @@ export function createMarquee(element, options = {}) {
   if (isInitialised(element)) {
     throw new Error('wake-marquee: this element is already a marquee, call destroy() first');
   }
-  return new Marquee(element, options);
+  return new Marquee(element, options).prime();
 }
 
 /**
@@ -608,6 +706,10 @@ export function initMarquees({ root = document, defaults = {} } = {}) {
     if (isInitialised(el)) continue;
     created.push(new Marquee(/** @type {HTMLElement} */ (el), { ...defaults, ...readOptions(el) }));
   }
+  // Every row is built before any row is measured. Interleaving the two would
+  // make each construction invalidate the layout the next one has to read,
+  // which is one forced reflow per marquee at the worst possible moment.
+  for (const marquee of created) marquee.prime();
   return created;
 }
 

@@ -5,7 +5,7 @@ An endless marquee that answers to the scroll. It reverses when the reader scrol
 **[Live demo →](https://robin-gogolok.github.io/wake-marquee/)**
 
 ```
-2.8 kB  gzipped JS
+3.0 kB  gzipped JS
 0.4 kB  gzipped CSS
   0     runtime dependencies
   1     rAF loop, however many rows are on the page
@@ -132,6 +132,38 @@ When the reader scrolls up, the row turns around. Not by flipping a sign, which 
 The easing is framerate independent, so the same turn takes the same time on a 60 Hz laptop and a 120 Hz phone. (`current += (target - current) * 0.1` per frame, the usual lerp, would be twice as fast on the phone.)
 
 Set `reverse: false` to keep a fixed heading and keep the wake.
+
+## Starting without a flash
+
+A row has two lives: the static one the server sends, and the running one the
+script builds. The handover between them is where marquees usually give
+themselves away, jumping once or twice before they settle.
+
+The library does its part. Measuring, cloning and the first transform all
+happen in one task, so no half-built state is ever painted, and that first
+frame is positioned to land on the same pixel the static row occupied rather
+than wherever the loop's zero point falls. A row reached by anchor link, or a
+reload at a restored scroll position, starts as cleanly as one scrolled to.
+
+Two things are left to you, because both change the layout of the static row
+before any script has run:
+
+**Declare the spacing in CSS, not only in the attribute.** `data-wake-gap` is
+read by the script, which means the static row is laid out with the default
+`2rem` until then and the items shift when it runs.
+
+```html
+<div data-wake-marquee data-wake-gap="4.5rem" style="--wake-gap:4.5rem">
+```
+
+Same for `data-wake-fade` and `--wake-fade`. The library leaves a property
+that is already set alone, so there is no conflict. `wake-marquee/astro` does
+this for you.
+
+**Give images `width` and `height`.** An unsized image changes the lane width
+when it decodes, and the lane width is the loop period. The library restates
+the offset in the new period so the row does not leap, but the items around it
+still move: only the attributes prevent that.
 
 ## API
 
@@ -281,7 +313,7 @@ The lane is measured once per resize, and its width is the loop period. Content 
 
 | | Size | Scroll-linked | Needs JS |
 |---|---|---|---|
-| **wake-marquee** | 3.2 kB | yes, direction and displacement | yes |
+| **wake-marquee** | 3.4 kB | yes, direction and displacement | yes |
 | CSS `@keyframes` marquee | 0 | no | no |
 | [Marquee3k](https://github.com/ezekielaquino/Marquee3000) | ~2 kB | no | yes |
 | [react-fast-marquee](https://github.com/justin-chu/react-fast-marquee) | ~4 kB | no | yes, React only |

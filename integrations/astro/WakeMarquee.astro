@@ -30,6 +30,13 @@ interface Props {
   'aria-label'?: string;
 }
 
+/**
+ * Spacing and fade width are rendered as custom properties here rather than
+ * left to the script. They change the layout of the static row, so a value
+ * that only arrives with the JavaScript makes the items visibly shift the
+ * moment it runs. The data-* attributes carry the same values for the script
+ * to read back; it leaves a property that is already set alone.
+ */
 const {
   direction,
   speed,
@@ -42,10 +49,15 @@ const {
   class: className,
   'aria-label': ariaLabel,
 } = Astro.props;
+
+const style = [gap && `--wake-gap:${gap}`, fade && `--wake-fade:${fade}`]
+  .filter(Boolean)
+  .join(';');
 ---
 
 <div
   class={className}
+  style={style || undefined}
   data-wake-marquee
   data-wake-direction={direction}
   data-wake-speed={speed?.toString()}

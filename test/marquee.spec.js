@@ -121,6 +121,217 @@ test.describe('the loop', () => {
   });
 });
 
+test.describe('starting up', () => {
+  /**
+   * Sample the row's pattern phase every frame from before the first script
+   * runs. All lanes are identical, so the visible quantity is the position of
+   * the pattern modulo the lane width, not where lane 0 happens to be: the
+   * loop legitimately shifts lane 0 by a whole period, and that is invisible.
+   */
+  test('the row never jumps as it starts', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__samples = [];
+      const tick = () => {
+        const root = document.querySelector('#logos-row');
+        if (root) {
+          const lane = root.querySelector('.wake-lane');
+          // The third item, not the first: item 1 sits flush at the left
+          // edge whatever the spacing is, so it cannot see a --wake-gap that
+          // arrives late. Item 3 has two gaps in front of it.
+          const items = root.querySelectorAll('img');
+          window.__samples.push({
+            left: items[2] ? items[2].getBoundingClientRect().left : null,
+            period: lane ? lane.getBoundingClientRect().width : 0,
+          });
+        }
+        if (window.__samples.length < 30) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    await page.goto(DEMO);
+    await page.waitForTimeout(900);
+
+    const jumps = await page.evaluate(() => {
+      const samples = window.__samples.filter((s) => s.left !== null);
+      const period = samples.map((s) => s.period).find((p) => p > 0);
+      const phase = (left) => (((left % period) + period) % period);
+      const out = [];
+      for (let i = 1; i < samples.length; i++) {
+        const raw = phase(samples[i].left) - phase(samples[i - 1].left);
+        // Fold a wrap across the period boundary back onto the short way round.
+        out.push(Math.abs((((raw + period / 2) % period) + period) % period - period / 2));
+      }
+      return out;
+    });
+
+    expect(jumps.length).toBeGreaterThan(20);
+    // At 55 px/s a frame moves under a pixel. The failures this catches are
+    // the overhang (a tenth of the container) and the first transform landing
+    // on the wrong phase: both tens to hundreds of pixels.
+    expect(Math.max(...jumps)).toBeLessThan(8);
+  });
+
+  test('a row below the fold does not jump when it comes into view', async ({ page }) => {
+    // The commoner case: prime() skips rows that are off screen, so this one
+    // is started by the IntersectionObserver instead.
+    //
+    // Measured against the container, which is what the reader actually sees,
+    // and reached by scrolling in small steps rather than jumping. The wake is
+    // a function of scroll position, so a jump moves the row legitimately and
+    // a long way; only a smooth approach makes an illegitimate jump stand out.
+    await page.addInitScript(() => {
+      window.__samples = [];
+      const tick = () => {
+        const root = document.querySelector('#wake-strong');
+        if (root) {
+          const lane = root.querySelector('.wake-lane');
+          const item = root.querySelector('.word');
+          window.__samples.push({
+            x: item.getBoundingClientRect().left - root.getBoundingClientRect().left,
+            period: lane ? lane.getBoundingClientRect().width : 0,
+            live: root.hasAttribute('data-wake-active'),
+          });
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    await page.goto(DEMO);
+    const target = await page.evaluate(
+      () => document.querySelector('#wake').getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.4,
+    );
+    for (let y = 0; y < target; y += 40) {
+      await page.evaluate((to) => window.scrollTo(0, to), y);
+      await page.waitForTimeout(24);
+    }
+    await page.waitForTimeout(400);
+
+    const result = await page.evaluate(() => {
+      const samples = window.__samples;
+      const period = samples.map((s) => s.period).find((p) => p > 0);
+      const phase = (x) => (((x % period) + period) % period);
+      let worst = 0;
+      let activated = false;
+      for (let i = 1; i < samples.length; i++) {
+        if (samples[i].live) activated = true;
+        const raw = phase(samples[i].x) - phase(samples[i - 1].x);
+        const folded = Math.abs((((raw + period / 2) % period) + period) % period - period / 2);
+        worst = Math.max(worst, folded);
+      }
+      return { worst, activated, frames: samples.length };
+    });
+
+    expect(result.activated).toBe(true);
+    expect(result.frames).toBeGreaterThan(30);
+    // A 40px scroll step moves the wake about 9px at wake: 18, and the loop
+    // adds well under a pixel. The failure this catches is the overhang being
+    // applied without the transform that cancels it: a full amplitude, ~190px.
+    expect(result.worst).toBeLessThan(25);
+  });
+
+  test('a row loaded mid-passage starts where the static row was', async ({ page }) => {
+    // An anchor link, or a reload at a restored scroll position, drops the
+    // reader in the middle of a row's passage across the viewport. There the
+    // overhang and the wake do not cancel each other, unlike a row entering
+    // from the bottom where they very nearly do, and the first frame lands up
+    // to a full amplitude away from where the static row was drawn.
+    await page.addInitScript(() => {
+      window.__samples = [];
+      const tick = () => {
+        const root = document.querySelector('#wake-strong');
+        if (root) {
+          const lane = root.querySelector('.wake-lane');
+          window.__samples.push({
+            x: root.querySelector('.word').getBoundingClientRect().left - root.getBoundingClientRect().left,
+            period: lane ? lane.getBoundingClientRect().width : 0,
+          });
+        }
+        if (window.__samples.length < 25) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    await page.goto(`${DEMO}#wake`);
+    await page.waitForTimeout(700);
+
+    const result = await page.evaluate(() => {
+      const samples = window.__samples;
+      const period = samples.map((s) => s.period).find((p) => p > 0);
+      const phase = (x) => (((x % period) + period) % period);
+      let worst = 0;
+      for (let i = 1; i < samples.length; i++) {
+        const raw = phase(samples[i].x) - phase(samples[i - 1].x);
+        worst = Math.max(worst, Math.abs((((raw + period / 2) % period) + period) % period - period / 2));
+      }
+      // How far into its passage the row was when it started, so a change in
+      // the demo's layout that moves this back to the edges is visible rather
+      // than quietly making the test prove nothing.
+      const rect = document.querySelector('#wake-strong').getBoundingClientRect();
+      const progress = (window.innerHeight - rect.top) / (window.innerHeight + rect.height);
+      return { worst, progress };
+    });
+
+    // Guard the guard: at progress near 0 or 1 this test cannot fail.
+    expect(result.progress).toBeGreaterThan(0.25);
+    expect(result.progress).toBeLessThan(0.9);
+    expect(result.worst).toBeLessThan(8);
+  });
+
+  test('a lane that resizes under a running row holds its phase', async ({ page }) => {
+    // An image with no width/height, or a web font swapping in, changes the
+    // lane width while the row is moving. The offset is measured in periods,
+    // so it has to be restated in the new one or the row jumps by the
+    // difference the moment the content settles.
+    await page.goto(DEMO);
+    await settle(page, '#logos', 500);
+
+    const jump = await page.evaluate(async () => {
+      const root = document.querySelector('#logos-row');
+      const lane = root.querySelector('.wake-lane');
+      const phase = () => {
+        const period = lane.getBoundingClientRect().width;
+        const left = root.querySelector('img').getBoundingClientRect().left;
+        return { phase: (((left % period) + period) % period) / period, period };
+      };
+
+      const before = phase();
+      // Widen every item, the way a late font or an unsized image would.
+      root.style.setProperty('--wake-gap', '9rem');
+      window.marquees.find((m) => m.element.id === 'logos-row').refresh();
+      const after = phase();
+
+      // Compare as a fraction of the period, since the period itself moved.
+      const raw = after.phase - before.phase;
+      return { drift: Math.abs(((raw + 0.5) % 1 + 1) % 1 - 0.5), grew: after.period > before.period };
+    });
+
+    expect(jump.grew).toBe(true);
+    // Restating the offset is an approximation: the wake displacement is in
+    // absolute pixels and does not scale with the period, so a few percent of
+    // drift survives. Without it this lands around 0.35 of a period, which is
+    // the row visibly leaping a third of its own content.
+    expect(jump.drift).toBeLessThan(0.05);
+  });
+
+  test('a row on screen is running before the first frame is painted', async ({ page }) => {
+    // prime() does the measuring, the cloning and the first transform inside
+    // initMarquees(), rather than leaving them to three separate observer
+    // callbacks. Without it the reader watches the row assemble itself.
+    await page.goto(DEMO);
+    const atInit = await page.evaluate(() => {
+      const root = document.querySelector('#logos-row');
+      return {
+        lanes: root.querySelectorAll('.wake-lane').length,
+        transformed: root.querySelector('.wake-lane').style.transform !== '',
+      };
+    });
+    expect(atInit.lanes).toBeGreaterThan(1);
+    expect(atInit.transformed).toBe(true);
+  });
+});
+
 test.describe('the seam never shows', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(DEMO);
@@ -233,12 +444,17 @@ test.describe('accessibility', () => {
     // The demo is the fixture, so a broken asset here is a broken test suite:
     // an <img> that fails to decode still has a bounding box and still passes
     // every geometry assertion above it.
-    const broken = await page.evaluate(() =>
-      [...document.querySelectorAll('#logos-row img')]
-        .filter((img) => !img.complete || img.naturalWidth === 0)
-        .map((img) => img.alt),
-    );
-    expect(broken).toEqual([]);
+    const state = await page.evaluate(() => {
+      const images = [...document.querySelectorAll('#logos-row img')];
+      return {
+        // Finished loading but no intrinsic size: that is a broken asset. An
+        // unfinished one is just a lazy original still off to the right.
+        broken: images.filter((i) => i.complete && i.naturalWidth === 0).map((i) => i.alt),
+        loaded: images.filter((i) => i.complete && i.naturalWidth > 0).length,
+      };
+    });
+    expect(state.broken).toEqual([]);
+    expect(state.loaded).toBeGreaterThan(8);
   });
 
   test('clones never lazy-load themselves into a hole in the row', async ({ page }) => {
@@ -319,9 +535,10 @@ test.describe('lifecycle', () => {
     });
 
     expect(after.attributes).toEqual(['data-wake', 'data-wake-fade', 'data-wake-gap', 'data-wake-marquee', 'data-wake-speed']);
-    // The library set --wake-gap and --wake-fade from those attributes, so
-    // both come back off and no empty style attribute is left behind.
-    expect(after.inlineStyle ?? '').toBe('');
+    // The demo declares both custom properties in its own style attribute, so
+    // the static row is laid out correctly before the script runs. The library
+    // never set them and must not take them away.
+    expect(after.inlineStyle).toBe('--wake-gap:4.5rem;--wake-fade:7rem');
   });
 });
 

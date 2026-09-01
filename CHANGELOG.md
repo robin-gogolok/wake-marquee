@@ -8,6 +8,31 @@ While the version is below `1.0.0` the API may still change in a minor release.
 
 ## [Unreleased]
 
+### Fixed
+
+- The row no longer jumps as it starts. Three separate causes, all of them
+  the same shape: work spread across frames that the browser paints one by
+  one.
+  - Measuring, cloning and the first transform were left to three different
+    observer callbacks. They now happen together, in the task that starts the
+    row, for any row already on screen.
+  - The track's overhang was applied at construction while the transform that
+    cancels it was written on first sight. Between the two, the row sat a full
+    wake amplitude off to one side. Both now happen in the same frame.
+  - The first animated frame landed on the loop's zero point rather than on
+    the position the static row already occupied. It is now aligned to it,
+    which matters most for a row reached by anchor link or a restored scroll
+    position, where the two are furthest apart.
+- A lane that resizes under a running row, from a late web font or an image
+  with no `width` and `height`, no longer shifts the row by the difference.
+  The offset is restated in the new period, holding the phase.
+
+### Changed
+
+- `wake-marquee/astro` renders `--wake-gap` and `--wake-fade` as inline custom
+  properties, so the static row is laid out correctly before the script runs.
+  The `data-wake-*` attributes still carry the same values for the script.
+
 ## [0.1.0] - 2026-09-01
 
 First release.
@@ -34,7 +59,7 @@ First release.
 - Rows are measured and cloned on first sight, not at construction, so a page
   of ten marquees does no work for the nine nobody has scrolled to.
 - `wake-marquee/css`: the loop geometry in an `@layer wake-marquee` cascade
-  layer, 408 B gzipped. It owns nothing about how items look.
+  layer, 407 B gzipped. It owns nothing about how items look.
 - `wake-marquee/astro`: Astro component rendering the same attributes.
 - Accessibility: clones are `inert` and `aria-hidden`, with a `tabindex="-1"`
   fallback where `inert` is missing, so the content is announced once rather

@@ -62,7 +62,7 @@ const sections = [
     id: 'logos',
     label: 'the ordinary case',
     note: 'A logo row. <code>fade</code> softens both edges so items are never cut mid-glyph, and <code>wake: 10</code> means the scroll drags the row against its own travel as the section crosses the viewport.',
-    html: `<div id="logos-row" data-wake-marquee data-wake-speed="55" data-wake="10" data-wake-gap="4.5rem" data-wake-fade="7rem" aria-label="Brands we stock">
+    html: `<div id="logos-row" data-wake-marquee data-wake-speed="55" data-wake="10" data-wake-gap="4.5rem" data-wake-fade="7rem" style="--wake-gap:4.5rem;--wake-fade:7rem" aria-label="Brands we stock">
       ${logos}
     </div>`,
   },
@@ -70,11 +70,11 @@ const sections = [
     id: 'wake',
     label: 'wake: 0 against wake: 18',
     note: 'The same row twice, at the same speed, differing only in wake. The top row is a plain loop and reads as decoration. The bottom row is being pulled through the page, and stops looking like a banner.',
-    html: `<div id="wake-none" data-wake-marquee data-wake-speed="60" data-wake="0" data-wake-gap="3rem">
+    html: `<div id="wake-none" data-wake-marquee data-wake-speed="60" data-wake="0" data-wake-gap="3rem" style="--wake-gap:3rem">
       ${words(['no wake', 'constant', 'a banner', 'playing on a loop', 'ignores you', 'wake: 0'])}
     </div>
     <div class="spacer"></div>
-    <div id="wake-strong" data-wake-marquee data-wake-speed="60" data-wake="18" data-wake-gap="3rem">
+    <div id="wake-strong" data-wake-marquee data-wake-speed="60" data-wake="18" data-wake-gap="3rem" style="--wake-gap:3rem">
       ${words(['with wake', 'dragged', 'has weight', 'answers the scroll', 'knows you are there', 'wake: 18'])}
     </div>`,
   },
@@ -82,11 +82,11 @@ const sections = [
     id: 'reverse',
     label: 'the turn',
     note: 'Scroll up. The top row turns around and the bottom one does not. The turn is eased over <code>ease</code>, not switched, so the row reads as something with momentum rather than a video played backwards.',
-    html: `<div id="reverse-on" data-wake-marquee data-wake-direction="right" data-wake-speed="70" data-wake="8" data-wake-ease="2.5" data-wake-gap="3rem">
+    html: `<div id="reverse-on" data-wake-marquee data-wake-direction="right" data-wake-speed="70" data-wake="8" data-wake-ease="2.5" data-wake-gap="3rem" style="--wake-gap:3rem">
       ${words(['scroll up', 'and I turn', 'eased, not switched', 'ease: 2.5', '↺'])}
     </div>
     <div class="spacer"></div>
-    <div id="reverse-off" data-wake-marquee data-wake-reverse="false" data-wake-speed="70" data-wake="8" data-wake-gap="3rem">
+    <div id="reverse-off" data-wake-marquee data-wake-reverse="false" data-wake-speed="70" data-wake="8" data-wake-gap="3rem" style="--wake-gap:3rem">
       ${words(['I keep going', 'reverse: false', 'still has a wake', 'just no turn', '→'])}
     </div>`,
   },
@@ -94,7 +94,7 @@ const sections = [
     id: 'hover',
     label: 'pauseOnHover',
     note: 'Rest the pointer on the row. Only where there is a real pointer to rest: on touch there is no hover to leave again, so the option is ignored rather than trapping the row in a paused state.',
-    html: `<div id="hover-row" data-wake-marquee data-wake-pause-on-hover data-wake-speed="80" data-wake="6" data-wake-gap="3rem">
+    html: `<div id="hover-row" data-wake-marquee data-wake-pause-on-hover data-wake-speed="80" data-wake="6" data-wake-gap="3rem" style="--wake-gap:3rem">
       ${words(['hover me', 'and I hold', 'pointer: fine only', 'let go', 'and I resume'])}
     </div>`,
   },
@@ -181,7 +181,7 @@ const html = `<!doctype html>
   <header>
     <h1>wake-marquee</h1>
     <p class="tagline">An endless marquee that answers to the scroll. It reverses when the reader scrolls back, and drags against its own direction of travel as it crosses the viewport.</p>
-    <p class="stat" data-stat>2.8 kB gzipped · 0 dependencies</p>
+    <p class="stat" data-stat>3.0 kB gzipped · 0 dependencies</p>
     <pre><code>npm i wake-marquee</code></pre>
     <p class="note reduced-notice" style="display:none">
       You have <code>prefers-reduced-motion: reduce</code> set, so every row below is standing still. That is the library honouring it, not a bug.

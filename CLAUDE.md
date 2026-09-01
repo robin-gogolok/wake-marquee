@@ -72,6 +72,18 @@ in a plain clipped flex row, which is exactly the resting state under
 - **The lanes always cover the track.** `laneCount` is
   `ceil(track / period) + 2`, derived in the doc comment. One fewer and a gap
   crosses the row once per period.
+- **The handover from static to running is one task.** `prime()` and the
+  IntersectionObserver both call `#activate()`, which measures, clones, sets
+  the overhang and writes the first transform together. Anything left for the
+  next frame gets painted on its own and the row visibly assembles itself.
+  Guarded by `a row below the fold does not jump when it comes into view`.
+- **The first frame is aligned to the static row it replaces**, not to the
+  loop's zero point. `#align()` solves
+  `-amplitude + wake + (offset - period) ≡ 0 (mod period)`. This is invisible
+  for a row entering from the bottom, where the overhang and the wake nearly
+  cancel, and worth up to a full amplitude for one loaded mid-passage. Test:
+  `a row loaded mid-passage starts where the static row was` — it asserts the
+  progress it ran at, because at either extreme it would prove nothing.
 - **Reads never interleave with writes.** `frame()` runs every instance's
   `read()` before any `write()`. `scrollY` and `scrollTop` are layout reads,
   which is why `sampleScroll()` (reads) and `scrollSign()` (map lookup) are
@@ -94,6 +106,10 @@ in a plain clipped flex row, which is exactly the resting state under
   `data-wake-marquee` is also the stylesheet's hook, so it is in the markup
   long before any script runs. `destroy()` only removes it if the library
   added it.
+- **The offset is restated when the period changes.** It is measured in
+  periods, so a lane resized by a late font or an unsized image would
+  otherwise shift the row by the difference. The restatement is an
+  approximation: the wake is in absolute px and does not scale.
 - **Clones get `loading="eager"`.** A clone starts off to the right of the
   track and is translated in, so a lazy image there never reaches its loading
   threshold and arrives as a hole in the row.
