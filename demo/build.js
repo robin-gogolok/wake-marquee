@@ -267,11 +267,15 @@ const html = `<!doctype html>
   #frame-bottom { bottom: 0; left: var(--band); right: var(--band); }
   /* Each pivots on a corner, so the rotation swings it onto the edge it
      belongs to. Both are placed so that their untransformed box still lies
-     over the frame. The right one used to sit at top: 100%, entirely below
-     the clip and brought back only by its own rotation, and it was the one
-     row of the four reported missing in Firefox. Cause unconfirmed, but a
-     box that lands inside only once it has been transformed is a box a
-     compositor is entitled to skip, and there is no need to ask. */
+     over the frame, and that is the load-bearing half.
+
+     The right row used to sit at top: 100%, which put its untransformed box
+     entirely below the clip and left its own rotation to bring it back. It
+     was invisible in Firefox and correct in Chrome and Safari, and it was
+     the only one of the four placed that way. Moving it here fixed it.
+     Playwright's Firefox 153 never reproduced it, headless or headed, at 2x
+     or at three widths, so do not expect a test to hold this: what holds it
+     is that no row needs to be transformed before it lands inside. */
   #frame-left {
     top: 0; left: var(--band); width: var(--frame);
     transform-origin: 0 0; transform: rotate(90deg);
