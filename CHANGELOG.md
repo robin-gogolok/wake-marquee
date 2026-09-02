@@ -8,6 +8,11 @@ While the version is below `1.0.0` the API may still change in a minor release.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-02
+
+A row whose container carries a transform was being measured on the axis the
+screen sees rather than the one it travels along.
+
 ### Fixed
 
 - A container carrying a `transform` is measured on the axis the row actually
@@ -159,7 +164,8 @@ First release.
 - Right-to-left writing modes are not supported. Flex rows follow the writing
   direction while the transforms are physical, so the two disagree.
 
-[Unreleased]: https://github.com/robin-gogolok/wake-marquee/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/robin-gogolok/wake-marquee/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/robin-gogolok/wake-marquee/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/robin-gogolok/wake-marquee/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/robin-gogolok/wake-marquee/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/robin-gogolok/wake-marquee/releases/tag/v0.1.0
