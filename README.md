@@ -411,7 +411,7 @@ Filling the track means copying the row until it covers the container, typically
 
 ### Left to right
 
-A right-to-left writing mode is not supported: the flex rows follow the writing direction while the transforms are physical, so the two disagree and the loop runs the wrong way. An `rtl` page can still use this inside an `ltr` container. `writing-mode` is the same story. For a vertical row, rotate the container instead, which is supported.
+A right-to-left writing mode is not supported: the flex rows follow the writing direction while the transforms are physical, so the two disagree and the loop runs the wrong way. An `rtl` page can still use this inside an `ltr` container. `writing-mode` is the same story, measured and written up in [BACKLOG.md](BACKLOG.md) along with what a fix would take. For a vertical row, rotate the container instead, which is supported.
 
 ### One measurement, one period
 

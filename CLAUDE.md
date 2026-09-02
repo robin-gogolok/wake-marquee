@@ -207,6 +207,15 @@ in a plain clipped flex row, which is exactly the resting state under
   opinions about how items look.
 - Comments explain *why* a non-obvious choice was made. Match that.
 
+## Backlog
+
+`BACKLOG.md` holds what has been looked at and put down again: the reasoning,
+what a fix would touch, and why it is not being done. Read it before designing
+anything large here. The answer to "why does it not simply do X" is sometimes
+already in it, with the measurement that settled it. An entry leaves the file
+when it ships, and its reasoning moves to wherever the next person will be
+standing: a code comment, or this file.
+
 ## Release
 
 Tag `vX.Y.Z` matching `package.json`; `release.yml` publishes via npm OIDC
