@@ -49,14 +49,14 @@ const wordmark = (label, width) => {
 };
 
 const BRANDS = [
-  ['NORDLICHT', 150],
-  ['KVIST', 110],
-  ['HALDEN & CO', 175],
-  ['MERIDIAN', 145],
-  ['SAAL', 95],
-  ['OSTWIND', 135],
-  ['BRÜNN', 110],
-  ['LAVENDER', 155],
+  ['YAK SHAVE', 150],
+  ['OFF BY ONE', 160],
+  ['STDERR & SONS', 195],
+  ['MONOREPO', 140],
+  ['NIT', 85],
+  ['CACHE MISS', 160],
+  ['HEISENBUG', 150],
+  ['RUBBER DUCK', 175],
 ];
 
 const logos = BRANDS.map(
@@ -71,7 +71,7 @@ const sections = [
     id: 'logos',
     label: 'the ordinary case',
     note: 'A logo row. <code>fade</code> softens both edges so items are never cut mid-glyph, and <code>wake: 10</code> means the scroll drags the row against its own travel as the section crosses the viewport.',
-    html: `<div id="logos-row" data-wake-marquee data-wake-speed="55" data-wake="10" data-wake-gap="4.5rem" data-wake-fade="7rem" style="--wake-gap:4.5rem;--wake-fade:7rem" aria-label="Brands we stock">
+    html: `<div id="logos-row" data-wake-marquee data-wake-speed="55" data-wake="10" data-wake-gap="4.5rem" data-wake-fade="7rem" style="--wake-gap:4.5rem;--wake-fade:7rem" aria-label="Companies that do not exist">
       ${logos}
     </div>`,
   },
@@ -104,11 +104,11 @@ const sections = [
     label: 'two rows against each other',
     note: 'The commonest marquee layout, and the one where the wake earns its keep: the two rows are dragged in opposite directions, because the wake always pulls against travel. Scroll and the pair opens and closes like a pair of shears.',
     html: `<div id="counter-left" data-wake-marquee data-wake-speed="45" data-wake="14" data-wake-gap="3rem" style="--wake-gap:3rem">
-      ${words(['Seit 1906', 'Künzelsau', 'Hohenlohe', 'Vier Generationen'])}
+      ${words(['travelling left', 'dragged right', 'wake: 14', 'scroll', 'and we open like shears'])}
     </div>
     <div class="spacer"></div>
     <div id="counter-right" data-wake-marquee data-wake-direction="right" data-wake-speed="45" data-wake="14" data-wake-gap="3rem" style="--wake-gap:3rem">
-      ${words(['Damenmode', 'Herrenmode', 'Stilberatung', 'Änderungen'])}
+      ${words(['travelling right', 'dragged left', 'same wake', 'opposite pull', 'that is the trick'])}
     </div>`,
   },
   {
@@ -116,7 +116,7 @@ const sections = [
     label: 'three items',
     note: 'A lane narrower than the container, repeated until it covers one. This is where a hand-rolled marquee usually breaks: too few copies and a gap crosses the row once per lap, and the number needed changes with the viewport. The count is derived, not configured.',
     html: `<div id="few-items" data-wake-marquee data-wake-speed="50" data-wake="8" data-wake-gap="5rem" style="--wake-gap:5rem">
-      ${words(['Damenmode', 'Herrenmode', 'Stilberatung'])}
+      ${words(['three items', 'that is all there is', 'the rest is copies'])}
     </div>`,
   },
   {
@@ -145,16 +145,16 @@ const sections = [
     note: 'Four rows framing a block, two of them under <code>rotate(±90deg)</code>. A transform moves the box on screen but not in the layout, and the loop is written in the layout: the lanes are translated inside the row\'s own axis, and the overhang is a percentage the browser resolves against the untransformed box. So every distance the loop is made of is measured there too. Read off the screen instead, a row turned on its side reports its own thickness as its width and runs on numbers wrong by its aspect ratio. The four speeds are percentages, which is why the short sides are the slower pair: a percentage is a fraction of its own container, and theirs is shorter.',
     html: `<div class="frame">
       <div id="frame-top" data-wake-marquee data-wake-direction="right" data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
-        ${words(['Damenmode', 'Herrenmode', 'Accessoires', 'Schuhe'])}
+        ${words(['this row is flat', 'the two sides are not', 'rotate(90deg)', 'same loop'])}
       </div>
       <div id="frame-right" data-wake-marquee data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
-        ${words(['Atelier', 'Archiv'])}
+        ${words(['turned', 'still counts'])}
       </div>
       <div id="frame-bottom" data-wake-marquee data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
-        ${words(['Taschen', 'Schmuck', 'Strickwaren', 'Mäntel'])}
+        ${words(['measured in the layout', 'not on the screen', 'so the maths holds', 'at any angle'])}
       </div>
       <div id="frame-left" data-wake-marquee data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
-        ${words(['Werkstatt', 'Service'])}
+        ${words(['on its side', 'same maths'])}
       </div>
     </div>`,
   },
@@ -265,15 +265,21 @@ const html = `<!doctype html>
      shows two rows of text on top of each other. */
   #frame-top { top: 0; left: var(--band); right: var(--band); }
   #frame-bottom { bottom: 0; left: var(--band); right: var(--band); }
-  /* Origin at the top left of each, so the rotation swings the row onto the
-     edge it belongs to and the offsets below are the corner it pivots on. */
+  /* Each pivots on a corner, so the rotation swings it onto the edge it
+     belongs to. Both are placed so that their untransformed box still lies
+     over the frame. The right one used to sit at top: 100%, entirely below
+     the clip and brought back only by its own rotation, and it was the one
+     row of the four reported missing in Firefox. Cause unconfirmed, but a
+     box that lands inside only once it has been transformed is a box a
+     compositor is entitled to skip, and there is no need to ask. */
   #frame-left {
     top: 0; left: var(--band); width: var(--frame);
     transform-origin: 0 0; transform: rotate(90deg);
   }
   #frame-right {
-    top: 100%; left: calc(100% - var(--band)); width: var(--frame);
-    transform-origin: 0 0; transform: rotate(-90deg);
+    top: 0; right: 0; width: var(--frame);
+    transform-origin: 100% 0;
+    transform: translateX(calc(-1 * var(--band))) rotate(-90deg);
   }
   footer { padding: 14vh 0 8vh; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--rule); }
   a { color: inherit; }

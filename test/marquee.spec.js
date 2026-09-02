@@ -848,10 +848,10 @@ test.describe('accessibility', () => {
   });
 
   test('the row is announced once, not once per clone', async ({ page }) => {
-    // Eight brands, however many lanes it took to fill the track.
-    const named = page.getByRole('img', { name: 'NORDLICHT' });
+    // Eight wordmarks, however many lanes it took to fill the track.
+    const named = page.getByRole('img', { name: 'YAK SHAVE' });
     await expect(named).toHaveCount(1);
-    await expect(page.getByLabel('Brands we stock')).toBeVisible();
+    await expect(page.getByLabel('Companies that do not exist')).toBeVisible();
   });
 
   test('clones are inert and out of the accessibility tree', async ({ page }) => {
@@ -981,7 +981,7 @@ test.describe('lifecycle', () => {
     expect(after.images).toBe(8);
     expect(after.attribute).toBe(true);
     expect(after.travel).toBe(false);
-    expect(after.firstAlt).toBe('NORDLICHT');
+    expect(after.firstAlt).toBe('YAK SHAVE');
   });
 
   test('destroy leaves the configuration the markup declared', async ({ page }) => {
