@@ -15,7 +15,11 @@ async function travel(page, selector, ms = 350) {
   return page.evaluate(
     async ([sel, duration]) => {
       const lane = document.querySelector(`${sel} .wake-lane`);
-      const period = lane.getBoundingClientRect().width;
+      // The layout width, so the fold below still works for a row whose
+      // container is rotated: the screen reports its thickness there, and
+      // folding against 44px instead of 480px puts every sample in a
+      // different repeat.
+      const period = parseFloat(getComputedStyle(lane).width);
       const read = () => new DOMMatrix(getComputedStyle(lane).transform).m41;
 
       const t0 = performance.now();
@@ -591,12 +595,17 @@ test.describe('the seam never shows', () => {
     const rows = await page.evaluate(() =>
       [...document.querySelectorAll('[data-wake-marquee]')].map((root) => {
         const lanes = [...root.querySelectorAll('.wake-lane')];
-        const period = lanes[0].getBoundingClientRect().width;
+        // The row's own coordinate system, which is where the lanes are
+        // translated. Off the screen instead, the rotated rows in #frame
+        // report their thickness for their width, and the sum comes out as
+        // 360px of content covering a 60px track: true, and about nothing.
+        const width = (el) => parseFloat(getComputedStyle(el).width);
+        const period = width(lanes[0]);
         return {
           id: root.id,
           lanes: lanes.length,
           covered: (lanes.length - 1) * period,
-          track: root.querySelector('.wake-track').getBoundingClientRect().width,
+          track: width(root.querySelector('.wake-track')),
         };
       }),
     );
@@ -618,26 +627,41 @@ test.describe('the seam never shows', () => {
     // six copies of it to place.
     await scrollThroughPage(page);
 
-    const rows = await page.evaluate(() =>
-      [...document.querySelectorAll('[data-wake-marquee]')].map((root) => {
+    const rows = await page.evaluate(() => {
+      const width = (el) => parseFloat(getComputedStyle(el).width);
+      // Does this row's own axis still line up with the screen's? The edge to
+      // edge assertions below are about where lanes land in view, and that is
+      // a different question once the container has been turned on its side.
+      const upright = (el) => {
+        for (let n = el; n && n !== document.body; n = n.parentElement) {
+          if (getComputedStyle(n).transform !== 'none') return false;
+        }
+        return true;
+      };
+      return [...document.querySelectorAll('[data-wake-marquee]')].map((root) => {
         const lanes = [...root.querySelectorAll('.wake-lane')].map((l) => l.getBoundingClientRect());
-        const track = root.querySelector('.wake-track').getBoundingClientRect();
+        const trackEl = root.querySelector('.wake-track');
+        const track = trackEl.getBoundingClientRect();
         return {
           id: root.id,
+          upright: upright(root),
           count: lanes.length,
           // What laneCount() is supposed to have worked out, from the geometry
           // as rendered rather than from the number it was given.
-          needed: Math.ceil(track.width / lanes[0].width) + 2,
-          narrow: lanes[0].width < track.width,
+          needed: Math.ceil(width(trackEl) / width(root.querySelector('.wake-lane'))) + 2,
+          narrow: width(root.querySelector('.wake-lane')) < width(trackEl),
           // Positive means a hole between two lanes.
           worstSeam: Math.max(...lanes.slice(1).map((r, i) => r.left - lanes[i].right)),
           leadsTrack: lanes[0].left - track.left,
           trailsTrack: lanes[lanes.length - 1].right - track.right,
         };
-      }),
-    );
+      });
+    });
 
-    for (const row of rows) {
+    // Splitting the rows is only honest if the page really has both kinds.
+    expect(rows.some((r) => !r.upright)).toBe(true);
+
+    for (const row of rows.filter((r) => r.upright)) {
       expect(row.worstSeam, `${row.id} seam`).toBeLessThan(1);
       expect(row.leadsTrack, `${row.id} left edge`).toBeLessThanOrEqual(1);
       expect(row.trailsTrack, `${row.id} right edge`).toBeGreaterThanOrEqual(-1);
@@ -684,7 +708,11 @@ test.describe('the seam never shows', () => {
           const track = root.querySelector('.wake-track');
           if (!track) continue;
           const wake = Number(root.dataset.wake ?? 8);
-          const amplitude = (wake * root.getBoundingClientRect().width) / 100;
+          // Worked out from the markup, so this stays independent of what the
+          // library measured, but in the layout rather than off the screen:
+          // the overhang is a CSS percentage, and the browser resolves those
+          // against the untransformed box.
+          const amplitude = (wake * parseFloat(getComputedStyle(root).width)) / 100;
           const x = new DOMMatrix(getComputedStyle(track).transform).m41;
           worst = Math.max(worst, Math.abs(x) - amplitude);
         }
@@ -703,6 +731,112 @@ test.describe('the seam never shows', () => {
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
       expect(overflow, `overflow at ${width}px`).toBe(0);
+    }
+  });
+});
+
+test.describe('a container that carries a transform', () => {
+  /**
+   * The #frame section puts four rows around a block, two of them under
+   * `rotate(±90deg)`. A transform moves the box on screen and leaves the
+   * layout alone, while the loop is written entirely in the layout: the lanes
+   * are translated inside the row's own axis, and the overhang is a CSS
+   * percentage the browser resolves against the untransformed box. Read the
+   * geometry off the screen instead and a row turned on its side runs on
+   * numbers wrong by its own aspect ratio, without anything failing loudly.
+   */
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEMO);
+    await page.evaluate(() => document.fonts.ready);
+    await settle(page, '#frame');
+  });
+
+  /** The four frame rows, measured where the loop is written. */
+  const geometry = (page) =>
+    page.evaluate(() =>
+      ['frame-top', 'frame-right', 'frame-bottom', 'frame-left'].map((id) => {
+        const el = document.getElementById(id);
+        const width = (n) => parseFloat(getComputedStyle(n).width);
+        const track = el.querySelector('.wake-track');
+        return {
+          id,
+          layout: width(el),
+          screen: el.getBoundingClientRect().width,
+          period: width(el.querySelector('.wake-lane')),
+          lanes: el.querySelectorAll('.wake-lane').length,
+          track: width(track),
+          overhang: -parseFloat(getComputedStyle(track).marginInlineStart),
+        };
+      }),
+    );
+
+  test('is a row the screen and the layout disagree about', async ({ page }) => {
+    // The premise the rest of this block rests on. Without it every test
+    // below would pass on an upright page and prove nothing at all.
+    const [top, right, bottom, left] = await geometry(page);
+    for (const side of [right, left]) {
+      expect(side.screen, `${side.id} on screen`).toBeLessThan(side.layout / 4);
+    }
+    for (const flat of [top, bottom]) {
+      expect(flat.screen, `${flat.id} on screen`).toBeCloseTo(flat.layout, 0);
+    }
+  });
+
+  test('builds enough lanes to cover the edge it runs along', async ({ page }) => {
+    // The reported symptom. Measured off the screen a row turned on its side
+    // asks laneCount() for ceil(44 / 44) + 2 lanes however long the edge is,
+    // and the last two thirds of it run empty.
+    for (const row of await geometry(page)) {
+      expect(row.track, `${row.id} track`).toBeCloseTo(row.layout + row.overhang * 2, 0);
+      expect((row.lanes - 1) * row.period, `${row.id} coverage`).toBeGreaterThanOrEqual(row.track);
+    }
+  });
+
+  test('resolves a percentage speed against that same edge', async ({ page }) => {
+    // The half of it a plain number survives: resolveSpeed() ignores the
+    // width unless the speed is a percentage, so this is the only form that
+    // ever notices which box was measured.
+    for (const row of await geometry(page)) {
+      const measured = Math.abs(await travel(page, `#${row.id}`));
+      const asked = row.layout * 0.08; // data-wake-speed="8%" on all four
+      expect(measured, `${row.id} px/s`).toBeGreaterThan(asked * 0.85);
+      expect(measured, `${row.id} px/s`).toBeLessThan(asked * 1.15);
+    }
+  });
+
+  test('spends the whole of its overhang on the wake, and no more', async ({ page }) => {
+    // The upper bound has its own test across the page, and it held right
+    // through the bug: an amplitude measured off the screen errs small, so a
+    // rotated row quietly kept a tenth of the wake it was given. This is the
+    // other side of the same invariant. Swept past the viewport, every row
+    // should reach the reserve that was set aside for it.
+    const rows = await geometry(page);
+    const ids = rows.map((r) => r.id);
+    const worst = Object.fromEntries(ids.map((id) => [id, 0]));
+    const height = page.viewportSize().height;
+    const frameTop = await page.evaluate(
+      () => document.querySelector('.frame').getBoundingClientRect().top + window.scrollY,
+    );
+
+    for (const f of [-1.1, -0.75, -0.4, 0, 0.4, 0.75, 1.1, 1.3]) {
+      await page.evaluate((to) => window.scrollTo(0, Math.max(0, to)), frameTop + f * height);
+      await page.waitForTimeout(120);
+      const now = await page.evaluate(
+        (list) =>
+          Object.fromEntries(
+            list.map((id) => {
+              const track = document.querySelector(`#${id} .wake-track`);
+              return [id, Math.abs(new DOMMatrix(getComputedStyle(track).transform).m41)];
+            }),
+          ),
+        ids,
+      );
+      for (const id of ids) worst[id] = Math.max(worst[id], now[id]);
+    }
+
+    for (const row of rows) {
+      expect(worst[row.id], `${row.id} wake reach`).toBeGreaterThan(row.overhang * 0.9);
+      expect(worst[row.id], `${row.id} wake overshoot`).toBeLessThan(row.overhang + 1);
     }
   });
 });

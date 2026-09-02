@@ -8,6 +8,31 @@ While the version is below `1.0.0` the API may still change in a minor release.
 
 ## [Unreleased]
 
+### Fixed
+
+- A container carrying a `transform` is measured on the axis the row actually
+  travels along. Every geometry read went through `getBoundingClientRect()`,
+  which reports the box after the transform, so a row under
+  `rotate(±90deg)` handed the loop its own thickness as its width and ran on
+  numbers wrong by its aspect ratio: three lanes where seven were needed,
+  leaving the last two thirds of the edge empty, a period that wrapped short,
+  and a wake and a percentage speed at a fraction of what was asked for. None
+  of it errored. The loop's geometry is now read in the row's own coordinate
+  system, which is where the lanes are translated and where the browser
+  resolves the overhang, so a rotated row behaves exactly like a flat one.
+  Any angle works, not only right angles.
+- The wake amplitude is read back off the overhang the browser resolved,
+  rather than being worked out from the same percentage a second time. The two
+  could disagree, which under a `scale()` cost half the wake and on a
+  container with inline padding a little more than the reserve.
+
+### Changed
+
+- A percentage `speed` under a `scale()` is now a fraction of the container
+  as the reader sees it, which is what `'8%'` reads as. It was measured
+  against the already scaled box and then rendered scaled again, so a row
+  inside `scale(0.5)` ran at a quarter of its speed rather than a half.
+
 ## [0.2.1] - 2026-09-01
 
 Two ways the row could still rearrange itself in front of the reader

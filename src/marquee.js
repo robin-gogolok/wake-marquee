@@ -111,6 +111,36 @@ function isSpeed(value) {
 }
 
 /**
+ * The width an element occupies in its own coordinate system, before any
+ * transform between it and the viewport.
+ *
+ * `getBoundingClientRect()` reports the box after every transform on the
+ * element and on its ancestors, and that is the wrong number for every
+ * distance the loop is built from. The lanes are translated *inside* that
+ * coordinate system, and the track's overhang is a CSS percentage the browser
+ * resolves against the untransformed box. A container carrying
+ * `rotate(90deg)` therefore reports its own thickness as its width, and the
+ * row runs on numbers wrong by its aspect ratio: three lanes where seven cover
+ * the track, a period that wraps short, and a wake a fraction of the one that
+ * was asked for. Nothing errors, which is what makes it worth a helper.
+ *
+ * The resolved value of `width` is the used width in layout px: free of the
+ * transform, and still sub-pixel exact where `offsetWidth` would round. That
+ * matters most for the lane, whose width *is* the loop period: rounded to
+ * whole pixels the seam would jump by up to half a pixel on every wrap.
+ *
+ * An element that is not being rendered resolves to `auto`, which parses as
+ * NaN. That is deliberate and load-bearing: it is what keeps refresh() from
+ * locking in a period for a row inside a `display: none` ancestor.
+ *
+ * @param {HTMLElement} el
+ * @returns {number} Width in px, or NaN when the element is not rendered.
+ */
+function layoutWidth(el) {
+  return parseFloat(getComputedStyle(el).width);
+}
+
+/**
  * Has this element already been turned into a marquee?
  *
  * The presence of `data-wake-marquee` is not the answer. That attribute is
@@ -297,8 +327,10 @@ class Marquee {
     this.speedPx = 0;
     /** Last written wake displacement in px, kept so a paused frame holds. */
     this.wakePx = 0;
-    /** Last measured wake amplitude in px. */
+    /** Last measured wake amplitude in px, read back off the overhang. */
     this.amplitude = 0;
+    /** Container width in px, in its own coordinate system. */
+    this.width = 0;
     /** Has the first frame been lined up with the static row it replaces? */
     this.aligned = false;
 
@@ -632,10 +664,12 @@ class Marquee {
   refresh() {
     if (this.destroyed) return;
 
-    const period = this.lane.getBoundingClientRect().width;
+    const period = layoutWidth(this.lane);
     // A display:none ancestor, or a lane whose images have not laid out yet,
-    // measures zero. Bailing leaves `measured` false so the next observer
-    // callback tries again, rather than locking in a broken period.
+    // measures nothing. Bailing leaves `measured` false so the next observer
+    // callback tries again, rather than locking in a broken period. It has to
+    // stay ahead of the track read below: a hidden track still reports the
+    // `120%` and `-10%` it was given, which parse as plausible numbers.
     if (!(period > 0)) return;
 
     // The period is the unit the offset is expressed in, so when it changes
@@ -652,7 +686,19 @@ class Marquee {
     this.measured = true;
     this.#setOverhang();
 
-    const needed = laneCount(this.track.getBoundingClientRect().width, period, LANE_BUFFER);
+    // Read the overhang back rather than working it out a second time. The
+    // browser has just resolved that percentage against the container's own
+    // box, so this is exactly the reserve the wake is allowed to spend,
+    // whatever padding, box-sizing or transform the caller's container
+    // carries. Derived twice the two can disagree; read back they cannot.
+    const overhang = getComputedStyle(this.track);
+    const trackWidth = parseFloat(overhang.width);
+    this.amplitude = -parseFloat(overhang.marginInlineStart);
+    // The track is the container plus that reserve on either side, so the
+    // container falls out of the two numbers already in hand.
+    this.width = trackWidth - this.amplitude * 2;
+
+    const needed = laneCount(trackWidth, period, LANE_BUFFER);
 
     while (this.lanes.length < needed) {
       const clone = /** @type {HTMLElement} */ (this.lane.cloneNode(true));
@@ -725,17 +771,19 @@ class Marquee {
   /** Read geometry. Never writes, so it cannot force a layout mid-frame. */
   read(viewport) {
     if (!this.#running()) return;
+    // The transformed box, on purpose, and the only place it is wanted: the
+    // wake is driven by the element crossing the viewport, so where it is on
+    // screen is the honest question. For a rotated row that is its long side,
+    // which is right. Every distance the loop travels is read in refresh()
+    // instead, in the coordinate system the transforms are written in.
     const rect = this.element.getBoundingClientRect();
     const progress = viewProgress(rect.top, rect.height, viewport);
-    // Kept because the first frame's alignment has to undo exactly the
-    // overhang the track was given, and that is measured in these same px.
-    this.amplitude = (this.options.wake * rect.width) / 100;
     this.wakePx = wakeOffset(progress, this.amplitude, this.dirSign);
-    // Resolved here rather than in write(), because a percentage speed is a
-    // fraction of this same width and this is where the width is honest. It
-    // is re-read every frame, so an option changed at runtime takes effect on
-    // the next one, and a container resized under a running row is followed.
-    this.speedPx = resolveSpeed(this.options.speed, rect.width);
+    // Resolved here rather than in write() so an option changed at runtime
+    // takes effect on the next frame. The width it is a fraction of comes
+    // from the last measurement, and a container resized under a running row
+    // is still followed: that resize is what the ResizeObserver is for.
+    this.speedPx = resolveSpeed(this.options.speed, this.width);
   }
 
   /**

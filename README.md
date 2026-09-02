@@ -361,6 +361,23 @@ The same rule, the other way round. Declare the layer order before the imports, 
 
 A layer registered late wins, and an `@import` after `tailwindcss` registers `wake-marquee` after `utilities`. Declared up front, it sits where it belongs: your utilities still win.
 
+## A row on its side
+
+There is no vertical mode. Rotate the container:
+
+```css
+.edge {
+  width: 30rem;   /* the edge it runs along, not its thickness */
+  height: 2.75rem;
+  transform-origin: 0 0;
+  transform: rotate(90deg);
+}
+```
+
+The loop is measured in the row's own coordinate system rather than off the screen, so a rotated row gets the period, the lane count, the wake and a percentage speed it would have had lying flat. Any angle works, and so does a `scale()` on the row or on anything above it.
+
+The one thing to write down is `width`: for a row on its side that is the edge it travels along, and nothing in CSS infers it from the height of whatever it is framing. The demo frames a block with four rows, two of them turned.
+
 ## Accessibility
 
 - **The content is announced once.** Clones are `inert` and `aria-hidden`, so a screen reader hears eight logos, not the forty that fill the track. Where `inert` is missing, focusable elements inside clones get `tabindex="-1"` instead, so they never become invisible tab stops.
@@ -392,9 +409,9 @@ There is no build-time or CSS-only version of this, and there cannot be one whil
 
 Filling the track means copying the row until it covers the container, typically two to four times. That is cheap for images and text and expensive for anything with its own runtime: iframes, videos, canvases and framework components with state get copied along with everything else. Rows of that kind want a different approach.
 
-### Horizontal, and left-to-right
+### Left to right
 
-Vertical marquees are not supported. Neither is a right-to-left writing mode: the flex rows follow the writing direction while the transforms are physical, so the two disagree and the loop runs the wrong way. An `rtl` page can still use this inside an `ltr` container.
+A right-to-left writing mode is not supported: the flex rows follow the writing direction while the transforms are physical, so the two disagree and the loop runs the wrong way. An `rtl` page can still use this inside an `ltr` container. `writing-mode` is the same story. For a vertical row, rotate the container instead, which is supported.
 
 ### One measurement, one period
 

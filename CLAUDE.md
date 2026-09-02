@@ -94,11 +94,24 @@ in a plain clipped flex row, which is exactly the resting state under
   `a row loaded mid-passage starts where the static row was` — it asserts the
   progress it ran at, because at either extreme it would prove nothing.
 - **A speed is a rate, never a duration.** `speed` takes px/s or a percentage
-  of the container width per second (`'8%'`), resolved in `read()` where the
-  width is honest. Seconds-per-width was the obvious alternative and reverses
-  the option on itself: `'12s'` slower than `'6s'` while `120` is faster than
-  `60`. Tests: `resolveSpeed` in the unit suite, and `a percentage speed is
+  of the container width per second (`'8%'`), resolved in `read()` so a speed
+  changed at runtime takes effect on the next frame; the width it is a
+  fraction of comes from `refresh()`, which is where the geometry is measured.
+  Seconds-per-width was the obvious alternative and reverses the option on
+  itself: `'12s'` slower than `'6s'` while `120` is faster than `60`. Tests: `resolveSpeed` in the unit suite, and `a percentage speed is
   measured against the container, and follows it` for the resize.
+- **Every distance the loop travels is measured in the row's own coordinate
+  system.** `getBoundingClientRect()` reports the box after every transform
+  between the element and the viewport, and a container carrying
+  `rotate(90deg)` therefore reports its own thickness as its width. The lanes
+  are translated *inside* that coordinate system and the overhang is a CSS
+  percentage the browser resolves against the untransformed box, so
+  `layoutWidth()` reads the resolved `width` instead: transform free, and
+  unlike `offsetWidth` still sub-pixel exact, which the lane needs because its
+  width is the period. The two reads that stay on the rect are the two asking
+  about the screen: whether a row is near the viewport in `prime()`, and
+  `viewProgress()`. The `#frame` demo section is the fixture. Guarded by the
+  `a container that carries a transform` tests.
 - **Reads never interleave with writes.** `frame()` runs every instance's
   `read()` before any `write()`. `scrollY` and `scrollTop` are layout reads,
   which is why `sampleScroll()` (reads) and `scrollSign()` (map lookup) are
@@ -134,6 +147,17 @@ in a plain clipped flex row, which is exactly the resting state under
   threshold and arrives as a hole in the row.
 - **Cloning happens on first sight, not at construction.** It is why the
   coverage test has to walk the whole page first.
+- **The wake amplitude is read back off the track, not worked out twice.**
+  `#setOverhang()` writes `-wake%` and the browser resolves it against the
+  container; `refresh()` then reads that resolved margin back. Computing the
+  same percentage a second time in JS is what let the two disagree, by the
+  aspect ratio under a rotation and by the inline padding on any container
+  that has some. The container width falls out of the same two numbers,
+  `track - 2 * amplitude`, rather than being measured again.
+- **`layoutWidth()` returning NaN is the `display: none` check.** An element
+  that is not being rendered resolves `width` to `auto`. It is also why the
+  lane is measured before the track: a hidden track still reports the `120%`
+  and `-10%` it was given, and both parse as plausible numbers.
 - **`byElement` is a `WeakMap`, and `getMarquee` is the only reader.**
   `initMarquees()` returns only what that call created, which leaves the
   declarative paths with no handle at all: a hoisted Astro script has nowhere

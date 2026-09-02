@@ -139,6 +139,25 @@ const sections = [
       ${words(['hover me', 'and I hold', 'pointer: fine only', 'let go', 'and I resume'])}
     </div>`,
   },
+  {
+    id: 'frame',
+    label: 'a container that carries a transform',
+    note: 'Four rows framing a block, two of them under <code>rotate(±90deg)</code>. A transform moves the box on screen but not in the layout, and the loop is written in the layout: the lanes are translated inside the row\'s own axis, and the overhang is a percentage the browser resolves against the untransformed box. So every distance the loop is made of is measured there too. Read off the screen instead, a row turned on its side reports its own thickness as its width and runs on numbers wrong by its aspect ratio. The four speeds are percentages, which is why the short sides are the slower pair: a percentage is a fraction of its own container, and theirs is shorter.',
+    html: `<div class="frame">
+      <div id="frame-top" data-wake-marquee data-wake-direction="right" data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
+        ${words(['Damenmode', 'Herrenmode', 'Accessoires', 'Schuhe'])}
+      </div>
+      <div id="frame-right" data-wake-marquee data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
+        ${words(['Atelier', 'Archiv'])}
+      </div>
+      <div id="frame-bottom" data-wake-marquee data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
+        ${words(['Taschen', 'Schmuck', 'Strickwaren', 'Mäntel'])}
+      </div>
+      <div id="frame-left" data-wake-marquee data-wake-speed="8%" data-wake="10" data-wake-gap="2.5rem" style="--wake-gap:2.5rem">
+        ${words(['Werkstatt', 'Service'])}
+      </div>
+    </div>`,
+  },
 ];
 
 const html = `<!doctype html>
@@ -210,6 +229,52 @@ const html = `<!doctype html>
   }
   #wake-none .word, #reverse-off .word, #pace-fixed .word { color: var(--muted); }
   #logos-row img { display: block; opacity: 0.9; }
+  /* Four rows framing a block, two of them turned on their side. The height
+     and the side rows' width are the same custom property on purpose: a
+     rotated row's width is the edge it runs along, and nothing in CSS says
+     so for it. */
+  .frame {
+    --frame: 30rem;
+    --band: 2.75rem;
+    position: relative;
+    height: var(--frame);
+    max-width: 46rem;
+    margin: 0 auto;
+    /* The side rows are laid out running off to the right and only land on
+       the edge once they are rotated. Clipping keeps that out of the page's
+       scrollable width, and clip rather than hidden so the block is not
+       a scroll container. */
+    overflow: clip;
+  }
+  .frame::after {
+    content: '';
+    position: absolute;
+    inset: var(--band);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--fg) 4%, transparent);
+  }
+  .frame > [data-wake-marquee] {
+    position: absolute;
+    height: var(--band);
+    padding-block: 0;
+    align-items: center;
+  }
+  .frame .word { font-size: 1rem; font-weight: 600; letter-spacing: 0.01em; }
+  /* Inset by a band on either side: the four corners belong to the two
+     rotated rows, which run the full height. Left to overlap, each corner
+     shows two rows of text on top of each other. */
+  #frame-top { top: 0; left: var(--band); right: var(--band); }
+  #frame-bottom { bottom: 0; left: var(--band); right: var(--band); }
+  /* Origin at the top left of each, so the rotation swings the row onto the
+     edge it belongs to and the offsets below are the corner it pivots on. */
+  #frame-left {
+    top: 0; left: var(--band); width: var(--frame);
+    transform-origin: 0 0; transform: rotate(90deg);
+  }
+  #frame-right {
+    top: 100%; left: calc(100% - var(--band)); width: var(--frame);
+    transform-origin: 0 0; transform: rotate(-90deg);
+  }
   footer { padding: 14vh 0 8vh; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--rule); }
   a { color: inherit; }
   @media (prefers-reduced-motion: reduce) {
